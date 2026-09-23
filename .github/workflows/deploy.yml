@@ -25,9 +25,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-        env:
-          VITE_SUBMIT_ENDPOINT: ${{ vars.VITE_SUBMIT_ENDPOINT }}
-          VITE_COMMITTEE_URL: ${{ vars.VITE_COMMITTEE_URL }}
       # Lets GitHub Pages serve deep links and unknown paths without a bare 404.
       - run: cp dist/index.html dist/404.html
       - uses: actions/upload-pages-artifact@v3

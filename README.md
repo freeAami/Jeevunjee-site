@@ -32,5 +32,6 @@ See `ASSESSMENT.md` for launch readiness.
 ## Deploying
 
 Every push to `main` builds the site and publishes it to GitHub Pages (`.github/workflows/deploy.yml`).
-The two links from the committee setup are stored as **repository variables** (Settings → Secrets and variables →
-Actions → Variables): `VITE_SUBMIT_ENDPOINT` and `VITE_COMMITTEE_URL`. Change them there, then re-run the workflow.
+The committee's Apps Script link and sheet link are built in (`src/lib/application.ts`, `src/content.ts`).
+If you redeploy the script as a *new* deployment its URL changes — update it there. (Editing the existing
+deployment with "New version" keeps the same URL.)

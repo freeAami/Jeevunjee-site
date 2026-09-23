@@ -73,7 +73,10 @@ export function hasAnswers(a: Answers) {
 
 // ---- submission ----
 
-const ENDPOINT = import.meta.env.VITE_SUBMIT_ENDPOINT as string | undefined;
+/** The committee's Apps Script web app. VITE_SUBMIT_ENDPOINT overrides it (set it to empty for preview mode). */
+const ENDPOINT =
+  (import.meta.env.VITE_SUBMIT_ENDPOINT as string | undefined) ??
+  'https://script.google.com/macros/s/AKfycbwynuoB0ZnrmneUaPrjJofmxFlg9fS0zmq3xveX-tQktm3k8j_1IPGeZNR2xsjfW8VS/exec';
 
 /** JVJ-2026-7KQ4M — no 0/O/1/I so it can be read back over the phone. */
 export function makeReference() {

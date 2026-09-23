@@ -46,17 +46,8 @@ It's free. There are no new accounts, logins or servers: it runs inside the Goog
 
 ## 5. Connect the website
 
-The website lives on GitHub Pages and reads two links from the repository's settings. Either send both links to
-whoever manages the site, or add them yourself: on GitHub, open the repo → **Settings → Secrets and variables →
-Actions → Variables tab → New repository variable**:
-
-| Name | Value |
-| --- | --- |
-| `VITE_SUBMIT_ENDPOINT` | the `/exec` Web app URL from step 4 |
-| `VITE_COMMITTEE_URL` | the sheet's own URL, from the browser address bar |
-
-Then go to **Actions → Deploy to GitHub Pages → Run workflow**. After about a minute the live site sends
-applications to the sheet, and **Committee access** in the footer opens it.
+Send the `/exec` Web app URL and the sheet's URL to whoever manages the site. They go in `src/lib/application.ts`
+and `src/content.ts`; pushing to GitHub redeploys the site automatically.
 
 **Test it once:** send a test application on the live site. Within a few seconds you should see a new row, a new
 documents folder and an email to each admin. Then delete the test row and folder.
