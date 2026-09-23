@@ -1,0 +1,5 @@
+/* Font files are loaded from Google Fonts in index.html (with preconnect). */
+:root {
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+}
