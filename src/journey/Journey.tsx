@@ -331,7 +331,12 @@ export function Journey({ onClose }: { onClose: () => void }) {
             {sendError && (
               <p className="scene-error" role="alert">
                 We couldn't send your application just now. Please check your connection and try again — your answers are
-                still here. If it keeps happening, write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+                still here.
+                {CONTACT_EMAIL ? (
+                  <> If it keeps happening, write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.</>
+                ) : (
+                  ' If it keeps happening, try again a little later.'
+                )}
               </p>
             )}
           </>

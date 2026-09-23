@@ -1,9 +1,12 @@
 // All site copy lives here so the family can edit wording without touching components.
 
-export const CONTACT_EMAIL = 'committee@jeevunjee.lk';
+/** Public contact address. Empty = no address is shown (applicants reply to their confirmation email instead). */
+export const CONTACT_EMAIL = '';
 
 /** The committee's applications sheet. Google sign-in protects it; only people it is shared with can open it. */
-export const COMMITTEE_URL = (import.meta.env.VITE_COMMITTEE_URL as string | undefined) || '';
+export const COMMITTEE_URL =
+  (import.meta.env.VITE_COMMITTEE_URL as string | undefined) ||
+  'https://docs.google.com/spreadsheets/d/1uLx0Iexc-F8HWYVGymmqYc9bamQkKSHtpkL7ojXU46k/edit';
 
 export const HERO_VIDEO =
   import.meta.env.VITE_HERO_VIDEO ||

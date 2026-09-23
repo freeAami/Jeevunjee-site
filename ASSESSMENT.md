@@ -61,7 +61,7 @@ Committee reads everything and writes back, documents sit in a private folder, a
 3. **Videos are hotlinked** from a design-tool CDN folder that could disappear at any time. Download them, self-host
    them, compress them for mobile, and add poster images. (The build environment couldn't reach that CDN, so video
    playback wasn't checked visually. The loop logic is a direct port of the prototype.)
-4. **Confirm the facts:** committee@jeevunjee.lk is a working inbox, the family names and bios are approved, and the
+4. **Confirm the facts:** the site shows no public contact email (the old domain is gone), the family names and bios are approved, and the
    "SL" mark next to the logo is intended.
 
 ## Recommended, not blocking

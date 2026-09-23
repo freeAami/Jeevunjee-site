@@ -234,7 +234,11 @@ export function Footer() {
           <div>
             <div className="footer-h">Contact</div>
             <div className="footer-col">
-              <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+              {CONTACT_EMAIL ? (
+                <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
+              ) : (
+                <span>Reply to your confirmation email</span>
+              )}
               <span>Colombo, Sri Lanka</span>
             </div>
           </div>
