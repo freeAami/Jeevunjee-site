@@ -23,6 +23,9 @@ const SEND_APPLICANT_CONFIRMATION = true;
 /** When an applicant replies to their confirmation email, it goes to the admins. */
 const REPLY_TO = ADMIN_EMAILS.join(',');
 
+/** The trustee portal. Each email links straight to the application there. */
+const PORTAL_URL = 'https://freeaami.github.io/Jeevunjee-site/#/portal/applications';
+
 const SHEET_NAME = 'Applications';
 const FOLDER_NAME = 'Jeevunjee applications — documents (private)';
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -68,7 +71,8 @@ function doPost(e) {
     let reference, row, folderUrl;
     try {
       const sheet = getSheet_();
-      reference = newReference_(sheet);
+      // The website now issues the reference (it's the one in the portal); keep it so both match.
+      reference = /^JVJ-\d{4}-[A-HJ-NP-Z2-9]{5}$/.test(str_(body.reference)) ? str_(body.reference) : newReference_(sheet);
       folderUrl = saveFiles_(reference, a.fullName, body.files || []);
       sheet.appendRow([
         new Date(), reference, 'New', cell_(a.fullName), cell_(a.email), cell_(a.phone), cell_(a.location),
@@ -187,7 +191,8 @@ function notifyAdmins_(reference, a, row, folderUrl) {
   const html =
     '<div style="font-family:Georgia,serif;font-size:26px;color:#111;margin-bottom:4px">New application — ' + esc_(a.fullName) + '</div>' +
     '<div style="font-family:Arial,sans-serif;font-size:13px;color:#6F6F6F;margin-bottom:20px">Reference ' + reference + '</div>' +
-    '<div style="margin-bottom:20px">' + button(rowUrl, 'Open in the applications sheet', true) +
+    '<div style="margin-bottom:20px">' + button(PORTAL_URL, 'Open in the trustee portal', true) +
+    button(rowUrl, 'Open in the sheet', false) +
     (folderUrl ? button(folderUrl, 'View documents', false) : '') + '</div>' +
     '<table style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;border-collapse:collapse">' +
     line('Situation', SITUATIONS[a.situation] || a.situation) +

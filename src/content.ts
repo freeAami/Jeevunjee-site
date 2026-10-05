@@ -31,7 +31,7 @@ export const steps: Step[] = [
     body: 'A short conversation on this site — one question at a time. Photos of documents are fine.',
     time: '~15 min',
     detail:
-      'Eight questions, taken at your own pace. Your answers are kept on your device as you go, so you can leave and come back to finish.',
+      'Five short stages — your profile, education, plans, the costs, and a sign-off — taken at your own pace. Your answers are kept on your device as you go, so you can leave and come back.',
   },
   {
     n: '02',

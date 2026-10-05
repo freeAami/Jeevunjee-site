@@ -1,5 +1,11 @@
 # Jeevunjee site: readiness assessment
 
+> **Update — trustee & student portal added.** Student profiles, courses, instalment schedules (LKR + GBP/EUR/USD with
+> per-payment exchange rates), payment logging, documents, trustee notes, one-time student logins, and an
+> applications inbox with one-click enrolment. The application journey now asks everything on the Trust's paper
+> form. To go live, the portal needs the one-time Supabase setup in `supabase/SETUP.md`; until then it runs in
+> preview mode, and applications keep going to the Google Sheet.
+
 **Verdict: ready to launch once the committee finishes a 10-minute Google setup and a privacy notice is written.**
 The front end is built, polished and tested. Applications go to a Google Sheet that only the committee can open
 (see `apps-script/SETUP.md`), and the copy no longer promises timelines or systems that don't exist.

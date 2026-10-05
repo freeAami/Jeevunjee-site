@@ -24,7 +24,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build
+      # The portal's database keys come from .env.production, or from repository variables if those are set
+      # (Settings → Secrets and variables → Actions → Variables). Neither = the portal runs in preview mode.
+      - run: |
+          if [ -n "$U" ]; then export VITE_SUPABASE_URL="$U"; fi
+          if [ -n "$K" ]; then export VITE_SUPABASE_ANON_KEY="$K"; fi
+          npm run build
+        env:
+          U: ${{ vars.VITE_SUPABASE_URL }}
+          K: ${{ vars.VITE_SUPABASE_ANON_KEY }}
       # Lets GitHub Pages serve deep links and unknown paths without a bare 404.
       - run: cp dist/index.html dist/404.html
       - uses: actions/upload-pages-artifact@v3

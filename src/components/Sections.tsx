@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { APPLY_VIDEO, COMMITTEE_URL, CONTACT_EMAIL, family, pillars, steps } from '../content';
+import { APPLY_VIDEO, CONTACT_EMAIL, family, pillars, steps } from '../content';
 import { useReveal } from '../hooks/useReveal';
 
 export function Mission() {
@@ -224,11 +224,7 @@ export function Footer() {
             <div className="footer-col">
               <span>Privacy notice</span>
               <span>Data retention</span>
-              {COMMITTEE_URL ? (
-                <a href={COMMITTEE_URL} target="_blank" rel="noopener noreferrer">Committee access</a>
-              ) : (
-                <span>Committee access</span>
-              )}
+              <a href="#/portal">Trustee &amp; student sign-in</a>
             </div>
           </div>
           <div>

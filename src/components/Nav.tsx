@@ -23,6 +23,7 @@ export function Nav({ onApply }: { onApply: () => void }) {
               {item.label}
             </a>
           ))}
+          <a href="#/portal" className="nav-link nav-signin">Sign in</a>
           <button type="button" onClick={onApply} className="liquid-glass cta nav-apply">
             Apply <span className="cta-icon" aria-hidden="true">→</span>
           </button>
