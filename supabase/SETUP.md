@@ -6,6 +6,11 @@ and applications keep going to the Google Sheet as before.
 
 Supabase's free plan is enough for the Trust. Nothing here needs code.
 
+> **Quick way (one command):** from a copy of this repo, run
+> `node supabase/setup.mjs --admins first@gmail.com,second@gmail.com --import path/to/import-existing-students.sql`.
+> It opens Supabase so you can make an access token, then does steps 1–6 below for you. It refuses to touch a
+> project that's already used for something else, and prints the two keys at the end. Needs Node 18+.
+
 ---
 
 ## 1. Create the project
