@@ -309,6 +309,16 @@ export function createDemoApi(): PortalApi {
       db.notes.unshift({ id: id(), student_id: studentId, body, author_name: authorName, created_at: now() });
       save();
     },
+    async deleteApplication(app) {
+      db.applications = db.applications.filter((x) => x.id !== app.id);
+      save();
+    },
+    async countUnusedUploads() {
+      return 0;
+    },
+    async removeUnusedUploads() {
+      return 0;
+    },
     async deleteNote(nid) {
       db.notes = db.notes.filter((n) => n.id !== nid);
       save();

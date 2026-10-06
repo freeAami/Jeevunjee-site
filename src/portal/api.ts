@@ -40,13 +40,18 @@ export interface PortalApi {
   loadApplications(): Promise<Application[]>;
   updateApplication(id: string, patch: Partial<Pick<Application, 'status' | 'review_notes'>>): Promise<void>;
   enrolApplication(id: string, trustId: string): Promise<string>;
+  /** Deletes an application that was not enrolled, with every file it uploaded. */
+  deleteApplication(app: Application): Promise<void>;
+  /** Applicant uploads that never became an application (older than a day). */
+  countUnusedUploads(): Promise<number>;
+  removeUnusedUploads(): Promise<number>;
 }
 
 /** Turn database errors into sentences a trustee or student can act on. */
 export function friendlyError(e: unknown): string {
   const msg = (e as { message?: string })?.message ?? String(e);
   if (/Database error saving new user|JVJ_SIGNUP_NOT_ALLOWED/i.test(msg))
-    return 'That access code isn’t valid (it may have expired or already been used), or this email isn’t registered as a trustee. Ask a trustee for a new code.';
+    return 'That code doesn’t work with this email. It may have expired or already been used, or it was made for a different email address. Ask for a new code.';
   if (/Invalid login credentials/i.test(msg)) return 'That email and password don’t match. Check them and try again.';
   if (/already registered|already been registered/i.test(msg)) return 'An account with this email already exists — sign in instead.';
   if (/Password should be at least/i.test(msg)) return 'Please choose a password of at least 8 characters.';
@@ -163,7 +168,7 @@ export function createLiveApi(): PortalApi {
           c.from('courses').select('*'),
           c.from('instalments').select('*').order('due_date', { nullsFirst: false }),
           c.from('payments').select('*').order('paid_on', { ascending: false }),
-          c.from('applications').select('*').order('created_at', { ascending: false }),
+          c.from('applications').select('*').order('created_at', { ascending: false }).limit(500),
         ]);
         return {
           trusts: check(trusts) as Trust[],
@@ -257,8 +262,10 @@ export function createLiveApi(): PortalApi {
 
     deleteDocument: (doc) =>
       withSb(async (c) => {
+        // File first: if that fails, nothing is half-deleted and the trustee can try again.
+        const rm = await c.storage.from(doc.bucket).remove([doc.path]);
+        if (rm.error) throw new Error(rm.error.message);
         check(await c.from('documents').delete().eq('id', doc.id));
-        if (doc.bucket === 'files') await c.storage.from('files').remove([doc.path]);
       }),
 
     fileUrl: (bucket, path) =>
@@ -273,12 +280,36 @@ export function createLiveApi(): PortalApi {
       withSb(async (c) => check(await c.rpc('issue_access_code', { p_student: studentId })) as string),
 
     loadApplications: () =>
-      withSb(async (c) => check(await c.from('applications').select('*').order('created_at', { ascending: false })) as Application[]),
+      withSb(async (c) => check(await c.from('applications').select('*').order('created_at', { ascending: false }).limit(500)) as Application[]),
 
     updateApplication: (id, patch) =>
       withSb(async (c) => void check(await c.from('applications').update(patch).eq('id', id))),
 
     enrolApplication: (id, trustId) =>
       withSb(async (c) => check(await c.rpc('enrol_application', { p_application: id, p_trust: trustId })) as string),
+
+    deleteApplication: (app) =>
+      withSb(async (c) => {
+        if (app.student_id) throw new Error('This application is part of a student file. Delete documents from the student file instead.');
+        const paths = (app.files ?? []).map((f) => f.path).filter(Boolean);
+        if (paths.length) {
+          const rm = await c.storage.from('applications').remove(paths);
+          if (rm.error) throw new Error(rm.error.message);
+        }
+        check(await c.from('applications').delete().eq('id', app.id));
+      }),
+
+    countUnusedUploads: () =>
+      withSb(async (c) => (check(await c.rpc('stale_application_uploads')) as string[]).length),
+
+    removeUnusedUploads: () =>
+      withSb(async (c) => {
+        const names = check(await c.rpc('stale_application_uploads')) as string[];
+        for (let i = 0; i < names.length; i += 100) {
+          const rm = await c.storage.from('applications').remove(names.slice(i, i + 100));
+          if (rm.error) throw new Error(rm.error.message);
+        }
+        return names.length;
+      }),
   };
 }

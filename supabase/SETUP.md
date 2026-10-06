@@ -35,14 +35,21 @@ This creates the database, the two trusts, the private file storage, and the rul
 
 ## 3. Register the trustees
 
-In a **new** SQL query, run the short snippet you were given separately (`supabase-admins.sql`). It lists the
-trustees' email addresses. Only these emails can create trustee logins; nobody else can sign up without a code.
+For each trustee, run this in a **new** SQL query (with their real email):
+
+```sql
+select public.issue_trustee_code('trustee@example.com');
+```
+
+It returns a one-time **trustee code** (valid 7 days). Give it to that trustee privately (phone or WhatsApp, not a
+public group). A trustee login needs **both** the email and its code, so knowing a trustee's address is never
+enough to sign up as them. If a code expires, just run the line again for a new one.
 
 ## 4. Two settings in Authentication
 
 1. **Authentication → Sign In / Providers → Email**: turn **off** “Confirm email”, then **Save**.
-   *(Sign-ups are already restricted to the trustees and to students holding a one-time code. Supabase's built-in
-   email can't reach ordinary inboxes, so confirmation emails would never arrive.)*
+   *(Every sign-up already needs a one-time code: trustees get theirs from step 3, students from a trustee.
+   Supabase's built-in email can't reach ordinary inboxes, so confirmation emails would never arrive.)*
 2. **Authentication → URL Configuration**:
    - **Site URL:** `https://freeaami.github.io/Jeevunjee-site/`
    - **Redirect URLs → Add URL:** `https://freeaami.github.io/Jeevunjee-site/**`
@@ -67,7 +74,17 @@ lists them at the top (possible duplicate names, due dates, exchange rates).
 ## 7. Trustees create their logins
 
 Once the site is connected, each trustee opens the site → **Sign in** → **First time here? Create your login** →
-enters their email and a password, leaving the access code empty.
+enters their email, a password and the trustee code from step 3.
+
+**If you ran an older version of this guide:** run the whole of `schema.sql` again (it is safe to re-run), then
+check who already holds a trustee login:
+
+```sql
+select a.email, a.claimed, u.created_at from public.admin_emails a left join auth.users u on lower(u.email) = lower(a.email);
+```
+
+Every row with `claimed = true` must be a trustee you know set up their own login. Anything unexpected: delete that
+user under **Authentication → Users**, then issue a fresh code for the real trustee.
 
 ---
 

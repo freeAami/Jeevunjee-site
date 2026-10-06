@@ -38,6 +38,11 @@ export function fileTooLarge(f: File) {
   return f.size > (f.type.startsWith('image/') ? MAX_IMAGE_BYTES : MAX_FILE_BYTES);
 }
 
+/** The same list the storage buckets allow (no SVG: it can carry scripts). */
+export const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'application/pdf'];
+export const ACCEPT_ATTR = ACCEPTED_TYPES.join(',') + ',.heic,.heif';
+export const ACCEPT_IMAGES = ACCEPTED_TYPES.filter((t) => t.startsWith('image/')).join(',') + ',.heic,.heif';
+
 export function acceptsFile(f: File) {
-  return f.type.startsWith('image/') || f.type === 'application/pdf';
+  return ACCEPTED_TYPES.includes(f.type) || (!f.type && /\.(heic|heif)$/i.test(f.name));
 }

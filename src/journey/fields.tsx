@@ -1,4 +1,5 @@
 import { useEffect, useState, type HTMLAttributes, type KeyboardEvent } from 'react';
+import { ACCEPT_ATTR, ACCEPT_IMAGES } from '../lib/files';
 
 type TextFieldProps = {
   id: string;
@@ -102,7 +103,7 @@ export function FileField(p: { id: string; label: string; file: File | null; onC
         <input
           id={p.id}
           type="file"
-          accept="image/*,.pdf"
+          accept={ACCEPT_ATTR}
           className="sr-only"
           aria-labelledby={`${p.id}-label`}
           aria-invalid={p.error ? true : undefined}
@@ -153,7 +154,7 @@ export function PhotoField(p: { id: string; label: string; file: File | null; on
           <span className="t">{p.file ? 'Looks good — tap to change' : 'Add a clear photo of your face'}</span>
           <span className="h">Like a passport picture. A phone selfie against a plain wall is fine.</span>
         </span>
-        <input id={p.id} type="file" accept="image/*" className="sr-only" aria-labelledby={`${p.id}-label`}
+        <input id={p.id} type="file" accept={ACCEPT_IMAGES} className="sr-only" aria-labelledby={`${p.id}-label`}
           aria-invalid={p.error ? true : undefined} onChange={(e) => p.onChange(e.target.files?.[0] ?? null)} />
       </label>
       {p.error && <p className="scene-error" role="alert">{p.error}</p>}

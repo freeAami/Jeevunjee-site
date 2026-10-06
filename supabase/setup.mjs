@@ -170,9 +170,17 @@ async function main() {
 
   // 5. trustees
   step(5, 'Registering the trustees');
-  const values = admins.map((e) => `('${e.replace(/'/g, "''")}')`).join(', ');
-  await sql(ref, `insert into public.admin_emails (email) values ${values} on conflict (email) do nothing`);
-  ok(admins.join(', '));
+  const codes = [];
+  for (const e of admins) {
+    try {
+      const [{ t }] = await sql(ref, `select to_json(public.issue_trustee_code('${e.replace(/'/g, "''")}')) as t`);
+      codes.push([e, json(t)]);
+    } catch (err) {
+      warn(`${e}: ${err.message}`);
+    }
+  }
+  ok('Trustee codes (valid 7 days) — give each trustee theirs privately; they enter it when creating their login:');
+  for (const [e, c] of codes) say(`     ${e}  →  ${c}`);
 
   // 6. import
   step(6, 'Existing students');

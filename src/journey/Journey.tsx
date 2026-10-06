@@ -160,8 +160,11 @@ export function Journey({ onClose }: { onClose: () => void }) {
       const r = await submitApplication(answers, files, honeypot, (d, t) => setSending({ done: d, total: t }));
       clearDraft();
       setResult(r);
-    } catch {
-      setSendError('We couldn’t send your application just now. Please check your connection and try again — your answers are still here.');
+    } catch (e) {
+      const busy = /JVJ_BUSY|row-level security|violates/i.test(String((e as Error)?.message ?? e));
+      setSendError(busy
+        ? 'We’re receiving a lot of applications right now. Please try again in a few hours — your answers are saved on this device.'
+        : 'We couldn’t send your application just now. Please check your connection and try again — your answers are still here.');
     } finally {
       setSending(null);
     }

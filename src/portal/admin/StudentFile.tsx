@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { acceptsFile, fileTooLarge } from '../../lib/files';
+import { ACCEPT_ATTR, ACCEPT_IMAGES, acceptsFile, fileTooLarge } from '../../lib/files';
 import { friendlyError } from '../api';
 import { dueState, fmtAmount, fmtBytes, fmtDate, fmtLkr, fmtMixed, relativeDue, sumMixed } from '../format';
 import {
@@ -79,11 +79,12 @@ function Header({ data, reload }: { data: StudentBundle; reload: () => void }) {
             <button type="button" className="pfile-photo-btn" onClick={() => photoInput.current?.click()} disabled={photoBusy}>
               {photoBusy ? 'Uploading…' : s.photo_path ? 'Change photo' : 'Add photo'}
             </button>
-            <input ref={photoInput} type="file" accept="image/*" className="sr-only" tabIndex={-1} aria-hidden="true"
+            <input ref={photoInput} type="file" accept={ACCEPT_IMAGES} className="sr-only" tabIndex={-1} aria-hidden="true"
               onChange={async (e) => {
                 const f = e.target.files?.[0];
                 e.target.value = '';
                 if (!f) return;
+                if (!acceptsFile(f) || !f.type.startsWith('image/')) return setPhotoErr('Please choose a photo (JPEG, PNG or HEIC).');
                 setPhotoBusy(true);
                 setPhotoErr('');
                 try {
@@ -307,6 +308,8 @@ function DetailsTab({ data, reload }: { data: StudentBundle; reload: () => void 
 export function openFile(api: { fileUrl: (b: string, p: string) => Promise<string> }, bucket: string, path: string, onError: (m: string) => void) {
   // Open the tab synchronously so pop-up blockers allow it, then point it at the signed link.
   const w = window.open('', '_blank');
+  // The file was uploaded by someone outside the trust: never let its tab reach back into the portal.
+  if (w) w.opener = null;
   api.fileUrl(bucket, path).then(
     (url) => {
       if (w) w.location.href = url;
@@ -360,7 +363,7 @@ function DocumentsTab({ data, reload }: { data: StudentBundle; reload: () => voi
           <label className="pfile-pick">
             <span>{file ? file.name : 'Choose a photo or PDF'}</span>
             <span className="pill">{file ? 'Change' : 'Browse'}</span>
-            <input ref={input} type="file" accept="image/*,application/pdf" className="sr-only"
+            <input ref={input} type="file" accept={ACCEPT_ATTR} className="sr-only"
               onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(''); }} />
           </label>
           <select value={category} onChange={(e) => setCategory(e.target.value as DocCategory)} aria-label="What kind of document">

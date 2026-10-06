@@ -42,12 +42,12 @@ the reference number and focus return. There were no console errors and no horiz
 Applications go to a Google Apps Script running inside the committee's own Google Sheet (`apps-script/`):
 
 - Each application becomes one sheet row with a Status dropdown and a notes column. It can be exported to Excel from the File menu.
-- Documents go to a private Drive folder, one sub-folder per applicant, linked from the row. They're never attached to emails.
+- Documents stay in the trustee portal's private storage. They're never copied to Drive or attached to emails.
 - Altaf and Imran get an email per application with an "Open in the applications sheet" button. Replying goes straight to the applicant.
 - The applicant gets a confirmation email with their reference number. References are issued by the server and never repeat.
 - The footer's "Committee access" link opens the sheet, protected by Google sign-in.
 - Phone photos are shrunk on the device before upload (a 10.9 MB test photo was sent as 1.3 MB), which helps applicants on mobile data.
-- Protections: a hidden spam-trap field, applicant text can't run as a spreadsheet formula, applicant text is escaped in emails, and an email failure never makes an applicant send twice.
+- Protections: the script only acts on applications that really exist in the portal database (once each, with a secret only the applicant's browser holds), daily email caps, applicant text can't run as a spreadsheet formula, applicant text is escaped in emails, and an email failure never makes an applicant send twice.
 
 Tested by running the real `Code.gs` against stand-ins for Google's services, driven by the real website in Chromium.
 It still needs one live test after the committee deploys it.
@@ -77,3 +77,25 @@ Committee reads everything and writes back, documents sit in a private folder, a
 - **Shared phones.** Drafts are kept on the device until sent. The UI says so, but on a shared family phone, consider
   whether the story and income answers should persist at all.
 - A light analytics or uptime check once it's live, and a real 404 page if it's deployed on a static host.
+
+## Security audit (October 2026)
+
+An end-to-end audit (Cloudflare security-audit skill, full mode) found nine issues in the previous version, two of them
+confirmed by reproduction. All are fixed in this version; `supabase/tests/run_security_tests.py` (105 checks) covers
+the database rules, including each fix. Summary of what changed:
+
+- **Trustee sign-up needs a one-time trustee code** (`issue_trustee_code`), not just a listed email.
+- **Apps Script can't be abused**: it only acts on real, fresh applications with a per-application secret, no longer
+  stores files, holds its lock only for a moment, and caps emails per day.
+- **Flood limits**: applications pause after 15/hour or 60/day; uploads must go into one fresh folder (max 30 files,
+  150/hour, 400/day); file entries are rebuilt from known fields only; trustee lists are capped.
+- **Deletion is real**: deleting a document removes the file in either bucket and it can't be resurrected; trustees can
+  delete an unenrolled application with its files, and remove abandoned uploads.
+- **Uploaded files can't touch the portal**: SVG and other active types are refused; opened files lose `window.opener`.
+- **Hosting headers** (Vercel): CSP, frame-ancestors none, COOP, HSTS, Permissions-Policy.
+- Smaller: unneeded functions closed to the public, form drafts expire after 14 days, workflow permissions scoped per
+  job, operator data files git-ignored.
+
+Known remaining limits: with email confirmation off, Supabase's sign-up endpoint may reveal whether an email already has
+a portal account (it can't create one without a code). Fully hiding that needs email confirmation with a real mail
+sender (custom SMTP) — see the audit report.

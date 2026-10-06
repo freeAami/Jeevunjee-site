@@ -78,13 +78,19 @@ export function requested(a: Answers) {
 // ---- draft kept on this device only (files are never stored) ----
 
 const DRAFT_KEY = 'jvj-application-draft-v2';
+/** A draft left on a shared or borrowed device shouldn't sit there forever. */
+const DRAFT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 export type Draft = { answers: Answers; scene: number };
 
 export function loadDraft(total: number): Draft | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
     if (!raw) return null;
-    const d = JSON.parse(raw) as Partial<Draft>;
+    const d = JSON.parse(raw) as Partial<Draft> & { savedAt?: number };
+    if (typeof d.savedAt !== 'number' || Date.now() - d.savedAt > DRAFT_MAX_AGE_MS) {
+      clearDraft();
+      return null;
+    }
     if (!d.answers || typeof d.scene !== 'number') return null;
     const answers = { ...emptyAnswers(), ...d.answers, declTruthful: false, declWilling: false, declInterview: false };
     return { answers, scene: Math.min(Math.max(1, d.scene), total) };
@@ -95,7 +101,7 @@ export function loadDraft(total: number): Draft | null {
 
 export function saveDraft(d: Draft) {
   try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...d, savedAt: Date.now() }));
   } catch {
     /* private mode / storage full — the journey still works, it just won't resume */
   }
@@ -164,8 +170,6 @@ export async function submitApplication(raw: Answers, files: Files, honeypot = '
   if (honeypot) return { reference: previewReference(), preview: false }; // bots get a fake success
 
   if (!supabaseConfigured) {
-    // Until the portal database is connected, keep sending applications to the committee's Google Sheet.
-    if (NOTIFY_ENDPOINT) return submitToSheet(answers, uploadsFor(raw, files), onProgress);
     await new Promise((r) => setTimeout(r, 900));
     return { reference: previewReference(), preview: true };
   }
@@ -185,75 +189,25 @@ export async function submitApplication(raw: Answers, files: Files, honeypot = '
     onProgress?.(i + 1, uploads.length + 1);
   }
 
-  const { data, error } = await sb.rpc('submit_application', { p_answers: answers, p_files: sent });
+  // A secret only this browser knows: the email notifier must show it, so nobody else can trigger emails.
+  const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
+  const { data, error } = await sb.rpc('submit_application', { p_answers: answers, p_files: sent, p_notify_token: token });
   if (error || !data) throw new Error(error?.message ?? 'Submission failed');
   onProgress?.(uploads.length + 1, uploads.length + 1);
-  notifyTrustees(answers, data as string);
+  notifyTrustees(data as string, token);
   return { reference: data as string, preview: false };
 }
 
-function sheetSummary(a: Answers) {
-  const req = requested(a);
-  const plan = a.plan
-    .map((p) => `${p.label || 'Payment'}${p.when ? ` (${p.when})` : ''}: Rs ${p.amountLkr || 0}${p.amountForeign ? ` + ${p.amountForeign} ${a.foreignCurrency}` : ''} — ${p.payer === 'self' ? 'family' : 'trust'}`)
-    .join('\n');
-  return {
-    fullName: a.fullName, email: a.email, phone: a.phone, location: a.city,
-    situation: a.durationYears ? `${a.durationYears}-year programme` : '',
-    institution: a.institution, course: a.courseTitle, household: '', income: '',
-    fundingFor: [a.assistanceKind && `Kind: ${a.assistanceKind}`, plan].filter(Boolean).join('\n'),
-    amountNeeded: `Rs ${req.lkr.toLocaleString('en-LK')}${req.foreign ? ` + ${req.foreign} ${a.foreignCurrency}` : ''}`,
-    story: [
-      a.dateOfBirth && `Born: ${a.dateOfBirth}`,
-      a.school && `School: ${a.school}`,
-      a.education.filter((e) => e.level || e.results).map((e) => `${e.level} ${e.year}: ${e.results}`).join('\n'),
-      a.hasWork && `Work: ${[a.workRole, a.workCompany].filter(Boolean).join(' at ')}${a.workSkills ? ` (${a.workSkills})` : ''}`,
-      a.achievements && `Achievements: ${a.achievements}`,
-      `Ambition: ${a.ambition}`,
-      a.goals && `Goals: ${a.goals}`,
-      `Total fee: Rs ${a.totalFeeLkr || 0}${a.totalFeeForeign ? ` + ${a.totalFeeForeign} ${a.foreignCurrency}` : ''}; family covers Rs ${a.selfFinancedLkr || 0}${a.selfFinancedForeign ? ` + ${a.selfFinancedForeign} ${a.foreignCurrency}` : ''}`,
-      `Family: ${a.familySituation}`,
-      `Signed: ${a.signatureName}`,
-    ].filter(Boolean).join('\n\n'),
-    consent: true,
-  };
-}
-
-/** Best-effort email to the trustees via their Apps Script. Never blocks or fails the application. */
-function notifyTrustees(a: Answers, reference: string) {
+/**
+ * Best-effort email to the trustees via their Apps Script. Only the reference and the one-time token are sent;
+ * the script fetches the application itself from the database, so it can't be fed made-up details.
+ */
+function notifyTrustees(reference: string, token: string) {
   if (!NOTIFY_ENDPOINT) return;
-  const summary = sheetSummary(a);
   fetch(NOTIFY_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ answers: summary, files: [], website: '', reference, submittedAt: new Date().toISOString() }),
+    body: JSON.stringify({ reference, token }),
     keepalive: true,
   }).catch(() => {});
-}
-
-/** Fallback while Supabase isn't connected: the whole application, files included, goes to the Apps Script. */
-async function submitToSheet(a: Answers, uploads: Upload[], onProgress?: Progress): Promise<SubmitResult> {
-  onProgress?.(0, uploads.length + 1);
-  const files = [];
-  for (const [i, u] of uploads.entries()) {
-    const blob = u.field === 'photo' ? await shrinkPhoto(u.file) : await shrinkImage(u.file);
-    const data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(blob);
-    });
-    // The script files the ID under "idFile" and anything else under "Document".
-    files.push({ field: u.field === 'idFile' ? 'idFile' : u.field === 'photo' ? 'photo' : 'other', name: `${u.label} — ${finalName(u.file, blob)}`, type: blob.type || u.file.type, data });
-    onProgress?.(i + 1, uploads.length + 1);
-  }
-  const res = await fetch(NOTIFY_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ answers: sheetSummary(a), files, website: '', submittedAt: new Date().toISOString() }),
-  });
-  if (!res.ok) throw new Error(`Submission failed (${res.status})`);
-  const out = (await res.json()) as { ok?: boolean; reference?: string; error?: string };
-  if (!out.ok || !out.reference) throw new Error(`Submission rejected: ${out.error ?? 'unknown'}`);
-  return { reference: out.reference, preview: false };
 }

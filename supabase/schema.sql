@@ -20,10 +20,14 @@ create table if not exists public.trusts (
 insert into public.trusts (name) values ('Rukan Trust'), ('Y A J Noorbhai Trust') on conflict (name) do nothing;
 
 -- ---------- trustee email allow-list (filled in during setup; never readable from the website) ---------
+-- A trustee login needs BOTH the listed email and a one-time trustee code (see issue_trustee_code), so knowing
+-- a trustee's email address is never enough to sign up as them.
 create table if not exists public.admin_emails (
   email text primary key,
   claimed boolean not null default false
 );
+alter table public.admin_emails add column if not exists invite_code text;
+alter table public.admin_emails add column if not exists invite_expires timestamptz;
 
 -- ---------- applications from the public website -----------------------------------------------------
 create table if not exists public.applications (
@@ -38,6 +42,10 @@ create table if not exists public.applications (
   review_notes text,
   created_at timestamptz not null default now()
 );
+-- The applicant's browser holds a random token; only its hash is kept. The email notifier must present it.
+alter table public.applications add column if not exists notify_token_hash text;
+alter table public.applications add column if not exists notified_at timestamptz;
+create index if not exists applications_created_idx on public.applications (created_at);
 
 -- ---------- students ----------------------------------------------------------------------------------
 create sequence if not exists public.student_code_seq start 1;
@@ -235,11 +243,19 @@ declare
   v_code text := upper(replace(trim(coalesce(new.raw_user_meta_data ->> 'access_code', '')), '-', ''));
   v_student public.students%rowtype;
 begin
-  if exists (select 1 from public.admin_emails where lower(email) = lower(new.email) and not claimed) then
-    update public.admin_emails set claimed = true where lower(email) = lower(new.email);
-    insert into public.profiles (id, role, email, full_name)
-      values (new.id, 'admin', new.email, nullif(new.raw_user_meta_data ->> 'full_name', ''));
-    return new;
+  -- Trustee: the email must be on the list AND the matching one-time trustee code must be given.
+  if exists (select 1 from public.admin_emails where lower(email) = lower(new.email)) then
+    if v_code <> '' and exists (select 1 from public.admin_emails
+                                where lower(email) = lower(new.email) and not claimed
+                                  and invite_code = v_code and invite_expires > now()
+                                for update) then
+      update public.admin_emails set claimed = true, invite_code = null, invite_expires = null
+        where lower(email) = lower(new.email);
+      insert into public.profiles (id, role, email, full_name)
+        values (new.id, 'admin', new.email, nullif(new.raw_user_meta_data ->> 'full_name', ''));
+      return new;
+    end if;
+    raise exception 'JVJ_SIGNUP_NOT_ALLOWED';
   end if;
 
   if v_code <> '' then
@@ -276,15 +292,43 @@ begin
   return v;
 end $$;
 
+-- One-time trustee code (valid 7 days). Run from the Supabase SQL editor by the project owner:
+--   select public.issue_trustee_code('trustee@example.com');
+-- or by an existing trustee. Give the code to the trustee privately; they enter it when creating their login.
+create or replace function public.issue_trustee_code(p_email text) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v text;
+  e text := lower(trim(coalesce(p_email, '')));
+begin
+  -- Allowed for a signed-in trustee, or for the project owner in the SQL editor (no website request behind it:
+  -- every call from the website carries request.jwt.claims, set by Supabase itself).
+  if not (public.is_admin() or coalesce(current_setting('request.jwt.claims', true), '') = '') then
+    raise exception 'not allowed';
+  end if;
+  if e !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'invalid email'; end if;
+  if exists (select 1 from auth.users where lower(email) = e) then raise exception 'this email already has a login'; end if;
+  v := public.random_code(10);
+  insert into public.admin_emails (email, claimed, invite_code, invite_expires)
+  values (e, false, v, now() + interval '7 days')
+  on conflict (email) do update set claimed = false, invite_code = excluded.invite_code,
+                                    invite_expires = excluded.invite_expires;
+  return v;
+end $$;
+
 -- =====================================================================================================
 -- Public application submission. The website calls this; the public can never read applications back.
 -- =====================================================================================================
 
-create or replace function public.submit_application(p_answers jsonb, p_files jsonb default '[]'::jsonb) returns text
+drop function if exists public.submit_application(jsonb, jsonb);
+create or replace function public.submit_application(p_answers jsonb, p_files jsonb default '[]'::jsonb,
+                                                     p_notify_token text default null) returns text
 language plpgsql security definer set search_path = public as $$
 declare
   v_name text := left(trim(coalesce(p_answers ->> 'fullName', '')), 200);
   v_ref text;
+  v_folder text;
+  v_files jsonb := '[]'::jsonb;
   f jsonb;
 begin
   if jsonb_typeof(p_answers) <> 'object' or pg_column_size(p_answers) > 200000 then raise exception 'invalid answers'; end if;
@@ -293,20 +337,103 @@ begin
     raise exception 'missing contact';
   end if;
   if coalesce(p_answers ->> 'signatureName', '') = '' then raise exception 'missing signature'; end if;
+  if p_notify_token is not null and p_notify_token !~ '^[A-Za-z0-9_-]{32,128}$' then raise exception 'invalid token'; end if;
+
+  -- Flood guard: a small trust gets a handful of applications a week. Past these limits, ask people to try later.
+  perform pg_advisory_xact_lock(hashtext('jvj_submit_application'));
+  if (select count(*) from public.applications where created_at > now() - interval '1 hour') >= 15
+     or (select count(*) from public.applications where created_at > now() - interval '1 day') >= 60 then
+    raise exception 'JVJ_BUSY';
+  end if;
+
+  -- Files: every one must be an object actually uploaded into ONE fresh folder that no other application uses.
   if jsonb_typeof(p_files) <> 'array' or jsonb_array_length(p_files) > 30 then raise exception 'invalid files'; end if;
   for f in select * from jsonb_array_elements(p_files) loop
-    if coalesce(f ->> 'path', '') !~ '^incoming/[0-9a-f-]{36}/[^/]+$' then raise exception 'invalid file path'; end if;
+    if jsonb_typeof(f) <> 'object' or coalesce(f ->> 'path', '') !~ '^incoming/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[^/]+$' then
+      raise exception 'invalid file path';
+    end if;
+    if v_folder is null then v_folder := split_part(f ->> 'path', '/', 2);
+    elsif split_part(f ->> 'path', '/', 2) <> v_folder then raise exception 'invalid file path';
+    end if;
+    if not exists (select 1 from storage.objects where bucket_id = 'applications' and name = f ->> 'path') then
+      raise exception 'invalid file path';
+    end if;
+    -- keep only the known fields, each bounded, so nothing else can be smuggled into the row
+    v_files := v_files || jsonb_build_array(jsonb_build_object(
+      'field', left(coalesce(f ->> 'field', ''), 60), 'label', left(coalesce(f ->> 'label', ''), 120),
+      'name', left(coalesce(f ->> 'name', ''), 120), 'path', f ->> 'path', 'mime', left(coalesce(f ->> 'mime', ''), 60),
+      'size', case when coalesce(f ->> 'size', '') ~ '^\d{1,9}$' then (f ->> 'size')::bigint end));
   end loop;
+  if v_folder is not null and exists (
+       select 1 from public.applications a, jsonb_array_elements(a.files) g
+       where split_part(g ->> 'path', '/', 2) = v_folder) then
+    raise exception 'invalid file path';
+  end if;
 
   loop
     v_ref := 'JVJ-' || to_char(now(), 'YYYY') || '-' || public.random_code(5);
     exit when not exists (select 1 from public.applications where reference = v_ref);
   end loop;
 
-  insert into public.applications (reference, full_name, email, phone, answers, files)
+  insert into public.applications (reference, full_name, email, phone, answers, files, notify_token_hash)
   values (v_ref, v_name, nullif(left(p_answers ->> 'email', 200), ''), nullif(left(p_answers ->> 'phone', 50), ''),
-          p_answers, p_files);
+          p_answers, v_files,
+          case when p_notify_token is not null then encode(sha256(convert_to(p_notify_token, 'UTF8')), 'hex') end);
   return v_ref;
+end $$;
+
+-- The trustees' email notifier (Apps Script) calls this with the reference and the applicant's token. It returns the
+-- application exactly once, within an hour of submission. Forged or repeated calls get nothing, so nobody can use
+-- the notifier to send mail or to read an application.
+create or replace function public.claim_notification(p_reference text, p_token text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare a public.applications%rowtype;
+begin
+  if coalesce(p_token, '') !~ '^[A-Za-z0-9_-]{32,128}$' then return null; end if;
+  update public.applications set notified_at = now()
+   where reference = p_reference
+     and notify_token_hash = encode(sha256(convert_to(p_token, 'UTF8')), 'hex')
+     and notified_at is null
+     and created_at > now() - interval '1 hour'
+  returning * into a;
+  if not found then return null; end if;
+  return jsonb_build_object('reference', a.reference, 'created_at', a.created_at, 'full_name', a.full_name,
+                            'email', a.email, 'phone', a.phone, 'answers', a.answers,
+                            'file_count', jsonb_array_length(a.files));
+end $$;
+
+-- Applicants may upload only into incoming/<fresh random folder>/<file>, at most 30 files per folder, never into
+-- a folder an application already uses, and only so many files per hour and per day across the whole site.
+create or replace function public.application_upload_ok(p_name text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare parts text[] := string_to_array(coalesce(p_name, ''), '/');
+begin
+  if coalesce(array_length(parts, 1), 0) <> 3 or parts[1] <> 'incoming' or parts[3] = ''
+     or parts[2] !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    return false;
+  end if;
+  if (select count(*) from storage.objects where bucket_id = 'applications' and name like 'incoming/' || parts[2] || '/%') >= 30
+     or (select count(*) from storage.objects where bucket_id = 'applications' and created_at > now() - interval '1 hour') >= 150
+     or (select count(*) from storage.objects where bucket_id = 'applications' and created_at > now() - interval '1 day') >= 400
+     or exists (select 1 from public.applications a, jsonb_array_elements(a.files) g
+                where split_part(g ->> 'path', '/', 2) = parts[2]) then
+    return false;
+  end if;
+  return true;
+end $$;
+
+-- Trustees: applicant uploads that never became an application (abandoned or junk), older than a day.
+create or replace function public.stale_application_uploads() returns setof text
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'not allowed'; end if;
+  return query
+    select o.name from storage.objects o
+    where o.bucket_id = 'applications' and o.created_at < now() - interval '1 day'
+      and not exists (select 1 from public.applications a, jsonb_array_elements(a.files) g where g ->> 'path' = o.name)
+      and not exists (select 1 from public.documents d where d.bucket = 'applications' and d.path = o.name)
+    order by o.name
+    limit 1000;
 end $$;
 
 -- Trustee turns an application into a student file: profile, course, payment plan and documents.
@@ -389,6 +516,25 @@ begin
   return v_student;
 end $$;
 
+-- When a trustee deletes a document that came from the application, forget it there too, so re-enrolling can
+-- never bring it back; and a deleted photo stops being the student's photo.
+create or replace function public.forget_deleted_document() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if old.bucket = 'applications' then
+    update public.applications
+       set files = coalesce((select jsonb_agg(v) from jsonb_array_elements(files) v where v ->> 'path' <> old.path), '[]'::jsonb)
+     where files @> jsonb_build_array(jsonb_build_object('path', old.path));
+  end if;
+  update public.students set photo_bucket = null, photo_path = null
+   where id = old.student_id and photo_bucket = old.bucket and photo_path = old.path;
+  return old;
+end $$;
+
+drop trigger if exists documents_forget on public.documents;
+create trigger documents_forget after delete on public.documents
+  for each row execute function public.forget_deleted_document();
+
 -- =====================================================================================================
 -- Row-level security: the rules above, enforced on every table.
 -- =====================================================================================================
@@ -449,10 +595,23 @@ create policy "student uploads own" on public.documents for insert to authentica
   and category in ('invoice', 'results', 'receipt', 'certificate', 'other')
 );
 
-grant execute on function public.submit_application(jsonb, jsonb) to anon, authenticated;
+-- Who may call which function. Everything not listed is closed to the public.
+revoke execute on function public.enrol_application(uuid, uuid) from public, anon;
+revoke execute on function public.issue_access_code(uuid) from public, anon;
+revoke execute on function public.issue_trustee_code(text) from public, anon;
+revoke execute on function public.stale_application_uploads() from public, anon;
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.instalment_student() from public, anon, authenticated;
+revoke execute on function public.touch_updated_at() from public, anon, authenticated;
+revoke execute on function public.forget_deleted_document() from public, anon, authenticated;
+revoke execute on function public.random_code(int) from anon, authenticated, public;
+grant execute on function public.submit_application(jsonb, jsonb, text) to anon, authenticated;
+grant execute on function public.claim_notification(text, text) to anon, authenticated;
+grant execute on function public.application_upload_ok(text) to anon, authenticated;
 grant execute on function public.enrol_application(uuid, uuid) to authenticated;
 grant execute on function public.issue_access_code(uuid) to authenticated;
-revoke execute on function public.random_code(int) from anon, authenticated, public;
+grant execute on function public.issue_trustee_code(text) to authenticated;
+grant execute on function public.stale_application_uploads() to authenticated;
 
 -- =====================================================================================================
 -- File storage: two private buckets.
@@ -461,8 +620,10 @@ revoke execute on function public.random_code(int) from anon, authenticated, pub
 -- =====================================================================================================
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('applications', 'applications', false, 10485760, array['image/*', 'application/pdf']),
-       ('files', 'files', false, 15728640, array['image/*', 'application/pdf'])
+values ('applications', 'applications', false, 10485760,
+        array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'application/pdf']),
+       ('files', 'files', false, 15728640,
+        array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'application/pdf'])
 on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit,
                                allowed_mime_types = excluded.allowed_mime_types;
 
@@ -472,9 +633,13 @@ drop policy if exists "jvj admins manage files" on storage.objects;
 drop policy if exists "jvj students read own" on storage.objects;
 drop policy if exists "jvj students upload own" on storage.objects;
 drop policy if exists "jvj students read own application files" on storage.objects;
+drop policy if exists "jvj admins delete application files" on storage.objects;
 
 create policy "jvj applicants upload" on storage.objects for insert to anon, authenticated
-  with check (bucket_id = 'applications' and (storage.foldername(name))[1] = 'incoming');
+  with check (bucket_id = 'applications' and public.application_upload_ok(name));
+
+create policy "jvj admins delete application files" on storage.objects for delete to authenticated
+  using (bucket_id = 'applications' and public.is_admin());
 
 create policy "jvj admins read" on storage.objects for select to authenticated
   using (bucket_id in ('applications', 'files') and public.is_admin());

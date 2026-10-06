@@ -58,7 +58,7 @@ export function Login({ api, signedInWithoutProfile, startupError }: { api: Port
         <h1>{mode === 'create' ? 'Create your login' : mode === 'forgot' ? 'Reset your password' : 'Sign in'}</h1>
         <p className="lede">
           {mode === 'create'
-            ? 'Students: use the access code a trustee gave you. Trustees: leave the code empty — your email is already registered.'
+            ? 'Use the one-time code you were given — students get theirs from a trustee; trustees get theirs from the site administrator.'
             : mode === 'forgot'
               ? 'We’ll email you a link to choose a new password.'
               : 'For the Trust’s trustees and the students it supports.'}
@@ -86,7 +86,7 @@ export function Login({ api, signedInWithoutProfile, startupError }: { api: Port
               <input id="l-pw2" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
             </div>
             <div className="pfield">
-              <label htmlFor="l-code">Access code <span className="opt">· students only</span></label>
+              <label htmlFor="l-code">Access code</label>
               <input id="l-code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoComplete="off"
                 autoCapitalize="characters" spellCheck={false} placeholder="e.g. K7QM-2XPA" />
             </div>

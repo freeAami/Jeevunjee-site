@@ -3,3 +3,9 @@ dist
 .env.local
 *.tsbuildinfo
 .vercel
+.env
+.env.*.local
+# operator files with personal data — never commit
+import-existing-students.sql
+supabase-admins.sql
+for-you/

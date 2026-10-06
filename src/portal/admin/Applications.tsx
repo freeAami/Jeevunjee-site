@@ -64,7 +64,37 @@ export function Applications() {
       ) : (
         <Empty>{data.length ? 'No applications with that status.' : 'No applications yet. They appear here as soon as someone sends one from the website.'}</Empty>
       )}
+      <UnusedUploads />
     </div>
+  );
+}
+
+/** Files people started uploading but never sent an application with. Shown only when there are some. */
+function UnusedUploads() {
+  const { api } = usePortal();
+  const { data: count, reload } = useAsync(() => api.countUnusedUploads(), [api]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  if (!count && !msg) return null;
+  return (
+    <p className="pnote" style={{ marginTop: 24 }}>
+      {msg || `${count} uploaded file${count === 1 ? '' : 's'} never became part of an application. `}
+      {!msg && (
+        <Button disabled={busy} onClick={async () => {
+          if (!confirm('Remove these unused files for good?')) return;
+          setBusy(true);
+          try {
+            const n = await api.removeUnusedUploads();
+            setMsg(`Removed ${n} unused file${n === 1 ? '' : 's'}.`);
+            reload();
+          } catch (e) {
+            setMsg(friendlyError(e));
+          } finally {
+            setBusy(false);
+          }
+        }}>Remove them</Button>
+      )}
+    </p>
   );
 }
 
@@ -173,6 +203,25 @@ export function ApplicationView({ id }: { id: string }) {
               }}>Accept &amp; create student file</Button>
             </div>
           </div>
+        )}
+        {!a.student_id && (
+          <>
+            <hr />
+            <div className="prow-actions">
+              <Button disabled={busy} onClick={async () => {
+                if (!confirm(`Delete ${a.full_name}’s application and all of its documents? This can’t be undone.`)) return;
+                setBusy(true);
+                setErr('');
+                try {
+                  await api.deleteApplication(a);
+                  navigate('/applications');
+                } catch (e) {
+                  setErr(friendlyError(e));
+                  setBusy(false);
+                }
+              }}>Delete application &amp; documents</Button>
+            </div>
+          </>
         )}
         {msg && <p className="pinfo" role="status">{msg}</p>}
         {err && <p className="perror" role="alert">{err}</p>}
