@@ -107,18 +107,26 @@ async function main() {
     TOKEN = await ask('   Paste the token here and press Enter: ');
   }
   if (!TOKEN.startsWith('sbp_')) warn('Tokens usually start with “sbp_” — trying anyway.');
-  let projects;
-  try {
-    projects = await api('GET', '/v1/projects');
-  } catch (e) {
-    die(`Supabase didn’t accept that token. (${e.message})`);
-  }
-  ok(`Signed in — ${projects.length} project(s) found`);
 
-  // 2. project
+  // 2. project — with --project we go straight to it (works with tokens limited to one project)
   step(2, 'Choose the project');
-  let project = arg('project') ? projects.find((p) => (p.ref || p.id) === arg('project')) : undefined;
-  if (!project) {
+  let project;
+  if (arg('project')) {
+    try {
+      project = await api('GET', `/v1/projects/${arg('project')}`);
+    } catch (e) {
+      die(`Couldn’t open project “${arg('project')}” with this token. Check the ID (the part after /project/ in the dashboard address) and that the token covers it. (${e.message})`);
+    }
+  } else {
+    let projects;
+    try {
+      projects = await api('GET', '/v1/projects');
+    } catch (e) {
+      if (/projects_read|403/.test(e.message))
+        die('This token can’t list projects (it’s limited to one project). Add  --project YOUR_PROJECT_ID  to the command — the ID is the part after /project/ in the dashboard address.');
+      die(`Supabase didn’t accept that token. (${e.message})`);
+    }
+    ok(`Signed in — ${projects.length} project(s) found`);
     projects.forEach((p, i) => say(`   ${i + 1}. ${p.name}  (${p.ref || p.id}, ${p.region}, ${p.status})`));
     say(`   ${projects.length + 1}. Create a new project called “jeevunjee” (recommended if the others are used for anything else)`);
     const pick = Number(await ask(`   Which one? [1-${projects.length + 1}]: `));
