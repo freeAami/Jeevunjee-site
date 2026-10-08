@@ -1,0 +1,2156 @@
+[
+  {
+    "coverage_id": "%2F.github%2Fworkflows::%2F.github%2Fworkflows%2Fdeploy.yml%23permissions::.github::SUPPLY-CHAIN-AND-RELEASE.md%23Untrusted%20code%20in%20a%20privileged%20workflow",
+    "canonical_refs": {
+      "surface": "/.github/workflows",
+      "boundary": "/.github/workflows/deploy.yml#permissions",
+      "subsystem": ".github",
+      "attack_class": "SUPPLY-CHAIN-AND-RELEASE.md#Untrusted code in a privileged workflow"
+    },
+    "surface": "GitHub Actions deploy and keepalive workflows",
+    "boundary": "Only trusted refs build and publish; least-privilege tokens",
+    "subsystem": "CI and release",
+    "attack_class": "Untrusted code in a privileged workflow",
+    "starting_paths": [
+      ".github/workflows/deploy.yml",
+      ".github/workflows/keepalive.yml",
+      "package.json",
+      "package-lock.json",
+      "vercel.json"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "SUPPLY-CHAIN-AND-RELEASE.md#Untrusted code in a privileged workflow",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Universal moves",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h6-supply",
+    "reviewed_paths": [
+      ".github/workflows/deploy.yml",
+      ".github/workflows/keepalive.yml",
+      "package-lock.json",
+      "package.json",
+      "vercel.json",
+      "vite.config.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h6-supply",
+        "reviewed_paths": [
+          ".github/workflows/deploy.yml",
+          ".github/workflows/keepalive.yml"
+        ],
+        "invariant": "No lower-trust event (pull_request, pull_request_target, issue_comment, workflow_run, fork) runs contributor code with pages:write/id-token:write or secrets; expression interpolation does not inject into run scripts",
+        "method": "source",
+        "result": "deploy.yml triggers only on push to main and workflow_dispatch (both require write access); keepalive.yml only on schedule/workflow_dispatch with contents:read. No secrets.* are referenced. Repository variables vars.VITE_SUPABASE_URL/ANON_KEY are passed via env: and used as quoted shell variables, not ${{ }} inside run scripts, so no script injection. checkout uses the default triggering ref. No path for untrusted code into the privileged deploy job was found.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h6-supply",
+        "reviewed_paths": [
+          "package.json",
+          "package-lock.json",
+          "vercel.json",
+          "vite.config.ts",
+          ".github/workflows/deploy.yml"
+        ],
+        "invariant": "Build inputs are bound: dependencies resolved from lockfile with integrity, no remote includes or mutable non-registry sources reach dist",
+        "method": "source",
+        "result": "Both GitHub Actions and Vercel use npm ci against package-lock.json; all 79 resolved entries are https://registry.npmjs.org tarballs with 79 sha512 integrity hashes; only install-script package is optional darwin-only fsevents. Actions are pinned to floating major tags (actions/checkout@v4, setup-node@v4, upload-pages-artifact@v3, deploy-pages@v4), all first-party GitHub actions; the only writer able to change them is the action owner, so recorded as hardening, not a finding. vite.config.ts base is taken from VITE_BASE set by the workflow only.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h6-supply",
+    "hardening": [
+      "deploy.yml grants pages:write and id-token:write at workflow level, so the build job (which runs npm ci and the build toolchain) also holds them; scope these permissions to the deploy job only.",
+      "GitHub Actions are referenced by floating major tags (actions/checkout@v4, setup-node@v4, upload-pages-artifact@v3, deploy-pages@v4); pin to full commit SHAs.",
+      ".gitignore does not cover .env, .env.*.local or the PII-bearing operator files named in supabase/SETUP.md (import-existing-students.sql, supabase-admins.sql); add them so an operator running setup.mjs from the repo copy cannot commit student data.",
+      "supabase/setup.mjs honors SUPABASE_API_BASE from the environment, sending the Management API token to any host; restrict to https://api.supabase.com or warn loudly when overridden.",
+      "supabase/setup.mjs prints the new project's database password to stdout (line 218); terminal scrollback/logging retains it.",
+      "vercel.json sets X-Frame-Options/nosniff/Referrer-Policy but GitHub Pages (the URL configured as Supabase site_url) cannot set response headers, and neither host sets a Content-Security-Policy; the portal on GitHub Pages is frameable.",
+      "Runtime background videos default to a third-party CloudFront host (src/content.ts:12-17, .env.example) whose content can change without review; ASSESSMENT.md already flags self-hosting.",
+      "Snapshot has no .git directory, so git history for committed-then-removed secrets could not be reviewed."
+    ]
+  },
+  {
+    "coverage_id": "apps-script%2FCode.gs%23doPost::apps-script%2FCode.gs%23LockService.getScriptLock::apps-script::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Worker%2C%20pool%2C%20and%20priority%20starvation",
+    "canonical_refs": {
+      "surface": "apps-script/Code.gs#doPost",
+      "boundary": "apps-script/Code.gs#LockService.getScriptLock",
+      "subsystem": "apps-script",
+      "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Worker, pool, and priority starvation"
+    },
+    "surface": "Apps Script doPost script lock",
+    "boundary": "Unauthenticated callers cannot starve genuine submissions of the script lock",
+    "subsystem": "Apps Script inbox",
+    "attack_class": "Worker, pool, and priority starvation",
+    "starting_paths": [
+      "apps-script/Code.gs",
+      "apps-script/SETUP.md",
+      "src/lib/application.ts"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Worker, pool, and priority starvation",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Pre-authentication work imbalance",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 3,
+    "status": "candidate",
+    "agent_id": "h10b-lock-starvation",
+    "reviewed_paths": [
+      ".env.production",
+      "apps-script/Code.gs",
+      "apps-script/SETUP.md",
+      "src/lib/application.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h10b-lock-starvation",
+        "reviewed_paths": [
+          "apps-script/Code.gs",
+          "apps-script/SETUP.md"
+        ],
+        "invariant": "An unauthenticated doPost caller cannot hold the single script-wide LockService lock for attacker-scaled work, so concurrent genuine submissions/notifications are not starved",
+        "method": "source",
+        "result": "doPost (Code.gs:57) runs only a honeypot check and a fullName/contact/consent check (Code.gs:63-67) before LockService.getScriptLock().waitLock(30000) (Code.gs:69-70). The critical section (Code.gs:72-82) includes saveFiles_ (Code.gs:149-162): one Drive createFolder plus, for every attacker-supplied files[] entry, Utilities.base64Decode and DriveApp createFile of up to MAX_FILE_BYTES=10 MiB each, with no cap on file count or total bytes; newReference_ (Code.gs:164-176) also reads the whole Reference column under the lock when no valid reference is supplied. The lock is released only after all of this. Callers that cannot acquire it within 30 s have waitLock throw, which the outer catch turns into {ok:false,error:'server-error'} (Code.gs:95-98) before any sheet row or email. No authentication, rate limit, per-request byte or count cap, or narrower lock scope appears in source. The only bounds are Google-side: per-execution runtime, POST body size, and concurrent-execution quotas, none of which is visible in the repo.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h10b-lock-starvation",
+        "reviewed_paths": [
+          "src/lib/application.ts",
+          ".env.production"
+        ],
+        "invariant": "Determine which genuine traffic depends on acquiring the lock and what is lost when it is starved",
+        "method": "source",
+        "result": "With Supabase configured (.env.production sets VITE_SUPABASE_URL/ANON_KEY), the application itself is stored by submit_application. Apps Script then only receives a fire-and-forget notification (notifyTrustees, application.ts:223-232: files:[], .catch(()=>{}), no retry), but that notification still needs the script lock. A starved notification is silently dropped, so trustees get no email and no sheet row. In the unconfigured fallback (submitToSheet, application.ts:235-259) the whole application goes through the lock. A starved request comes back as an error to the genuine applicant, who must resubmit.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h10b-lock-starvation",
+        "reviewed_paths": [
+          "apps-script/Code.gs"
+        ],
+        "invariant": "Locally confirm that the work inside the lock scales with attacker input and that a request arriving while the lock is held fails before writing a row or sending mail",
+        "method": "local",
+        "result": "I ran the unmodified Code.gs in a node vm inside the approved sandbox, with all Google services stubbed and dummy data only. Drive createFile calls made while the lock was held equalled the attacker's file count: 1, 10 and 100 files gave 1, 10 and 100 calls. A genuine notification-only request made while another execution held the lock returned {\"ok\":false,\"error\":\"server-error\"}, sent 0 mails and appended no row.",
+        "artifact": "agents/h10b-lock-starvation/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [
+      "apps-script/Code.gs:doPost:script-lock-held-across-attacker-drive-writes"
+    ],
+    "unresolved": [],
+    "hunter_group": "h10b-lock-starvation",
+    "critic_reason": "doPost takes LockService.getScriptLock().waitLock(30000) (Code.gs:69-70) and keeps holding it while saveFiles_ base64-decodes and writes an unbounded number of attacker-supplied files to Drive (Code.gs:76, 149-160) before appendRow. Concurrent unauthenticated requests carrying large file arrays can keep the lock held. Genuine submissions then time out in waitLock and return 'server-error' (Code.gs:95-97), before any row or notification is written. When Supabase is unconfigured, the Apps Script is the primary inbox (application.ts). The h5 units checked mail quota, Drive file count and injection, but not lock or execution-slot starvation of legitimate requests.",
+    "reassignment_note": "h10-lock-starvation returned checks without the required artifact field; result discarded unrepaired per HUNTING.md, unit reassigned to a fresh hunter.",
+    "hardening": [
+      "Narrow the lock: do saveFiles_ (Drive writes) before waitLock, or after releaseLock, and hold the lock only around newReference_ plus appendRow. Use lock.tryLock with a short timeout and a retry instead of failing silently.",
+      "Reject before any expensive work: cap files.length (the site sends at most about 5 + education rows) and the total decoded bytes, and when Supabase is the system of record, ignore files entirely for notification-only posts that carry a valid reference.",
+      "notifyTrustees in src/lib/application.ts is fire-and-forget with no retry or server-side fallback. Any Apps Script failure, starvation included, silently drops trustee notification. A Supabase-side record or trigger, rather than the browser, could drive notification."
+    ]
+  },
+  {
+    "coverage_id": "apps-script%2FCode.gs%23doPost::apps-script%2FCode.gs%23cell_::apps-script::ATTACK-CLASSES.md%23Injection",
+    "canonical_refs": {
+      "surface": "apps-script/Code.gs#doPost",
+      "boundary": "apps-script/Code.gs#cell_",
+      "subsystem": "apps-script",
+      "attack_class": "ATTACK-CLASSES.md#Injection"
+    },
+    "surface": "Apps Script web app doPost",
+    "boundary": "Untrusted application content neutralised before Sheet, Drive and HTML email",
+    "subsystem": "Apps Script inbox",
+    "attack_class": "Injection",
+    "starting_paths": [
+      "apps-script/Code.gs",
+      "src/lib/application.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Injection",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h5-apps-script",
+    "reviewed_paths": [
+      "apps-script/Code.gs"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h5-apps-script",
+        "reviewed_paths": [
+          "apps-script/Code.gs"
+        ],
+        "invariant": "Every attacker-controlled value written to the Sheet via appendRow passes through cell_() so it cannot begin with = + - @ after trimming",
+        "method": "source",
+        "result": "Code.gs:77-81: all answers fields go through cell_(); remaining values are new Date(), a reference that matches /^JVJ-\\d{4}-[A-HJ-NP-Z2-9]{5}$/ or is server-generated, a Drive folder URL, and ''. SITUATIONS[a.situation] is the only non-cell_ path and can only return owner-fixed strings or inherited Object.prototype members (functions), never an attacker-chosen string.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h5-apps-script",
+        "reviewed_paths": [
+          "apps-script/Code.gs"
+        ],
+        "invariant": "cell_/str_/esc_ neutralise formula prefixes hidden behind leading whitespace/BOM, non-string types, and HTML metacharacters",
+        "method": "local",
+        "result": "Sandboxed harness loading the real Code.gs with mocked services: leading space, tab, NBSP, BOM before = + - @ and the array ['=A1'] all get an apostrophe prefix; only a zero-width-space prefix stays unprefixed, which Sheets does not evaluate as a formula because the first character is not '='. esc_ converts <img ...>\" to entities.",
+        "artifact": "agents/h5-apps-script/artifacts/evidence-1.txt"
+      },
+      {
+        "agent_id": "h5-apps-script",
+        "reviewed_paths": [
+          "apps-script/Code.gs"
+        ],
+        "invariant": "Applicant data placed in trustee/applicant HTML emails is escaped and no attacker data reaches an attribute/URL context",
+        "method": "source",
+        "result": "notifyAdmins_ (Code.gs:182-205) passes every value through esc_ in text/td context; button hrefs are PORTAL_URL, the sheet URL and the Drive folder URL (owner/Google-controlled); the reference is regex-validated or generated. confirmApplicant_ (Code.gs:224) escapes the first name. Subjects are plain text. Drive folder/file names (Code.gs:152,158) are inert names. No injection sink reached.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h5-apps-script",
+    "hardening": [
+      "Code.gs:75 accepts any caller-supplied pattern-matching reference with no check against Supabase or existing rows, and Code.gs:211 sets the trustee notification's replyTo to the caller's email; SETUP.md tells trustees to reply to that email. A forged notification can therefore reuse a real applicant's name and reference so trustee replies go to the attacker. Fix: have the Supabase path sign notifications (e.g. HMAC with a script-property secret) and drop or flag unsigned ones.",
+      "Code.gs:156 accepts any image/* MIME (including image/svg+xml) for Drive files; restrict to image/jpeg, image/png, image/webp and application/pdf to match the Supabase bucket.",
+      "Code.gs:209 puts the raw fullName (up to 20000 chars, may contain CR/LF) into the email subject. MailApp is expected to encode headers, but str_ could strip control characters and cap subject length.",
+      "Code.gs:236 cell_ does not prefix a value starting with an invisible character such as U+200B. Sheets does not evaluate it as a formula, but stripping leading format characters would make cell_ robust to future changes."
+    ]
+  },
+  {
+    "coverage_id": "apps-script%2FCode.gs%23doPost::apps-script%2FCode.gs%23confirmApplicant_::apps-script::ATTACK-CLASSES.md%23Feature%20abuse%20and%20data%20leakage",
+    "canonical_refs": {
+      "surface": "apps-script/Code.gs#doPost",
+      "boundary": "apps-script/Code.gs#confirmApplicant_",
+      "subsystem": "apps-script",
+      "attack_class": "ATTACK-CLASSES.md#Feature abuse and data leakage"
+    },
+    "surface": "Apps Script web app doPost",
+    "boundary": "Unauthenticated callers cannot abuse the owner's Gmail or quotas",
+    "subsystem": "Apps Script inbox",
+    "attack_class": "Feature abuse and data leakage",
+    "starting_paths": [
+      "apps-script/Code.gs",
+      "apps-script/SETUP.md",
+      "src/lib/application.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Quota-accounting scope and reset gaps",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "h5-apps-script",
+    "reviewed_paths": [
+      "apps-script/Code.gs",
+      "apps-script/SETUP.md",
+      "src/lib/application.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h5-apps-script",
+        "reviewed_paths": [
+          "apps-script/Code.gs",
+          "apps-script/SETUP.md",
+          "src/lib/application.ts"
+        ],
+        "invariant": "An unauthenticated caller cannot make the owner's MailApp send to arbitrary recipients or exhaust the shared daily mail quota that trustee notifications rely on",
+        "method": "local",
+        "result": "Harness: a single POST with only fullName, email and consent:true (honeypot empty) produced 2 MailApp.sendEmail calls, one to both ADMIN_EMAILS and one to the attacker-chosen victim@example.org, i.e. 3 recipients per request. Code.gs has no rate limit, shared secret, captcha or per-recipient bound. The endpoint URL is hardcoded in the public client (src/lib/application.ts:120-122). SETUP.md states the quota is about 100 emails/day.",
+        "artifact": "agents/h5-apps-script/artifacts/evidence-1.txt"
+      },
+      {
+        "agent_id": "h5-apps-script",
+        "reviewed_paths": [
+          "apps-script/Code.gs"
+        ],
+        "invariant": "An unauthenticated caller cannot create unbounded persistent Drive files in the owner's account",
+        "method": "local",
+        "result": "saveFiles_ (Code.gs:149-160) has no count limit and only a 10 MB per-file check after decoding. In the harness one request with 3 file entries created 3 Drive files, including type image/svg+xml, which /^(image\\/|application\\/pdf$)/ accepts. Google's own request-size and execution-time limits are the only upstream bounds and are not visible in source.",
+        "artifact": "agents/h5-apps-script/artifacts/evidence-1.txt"
+      },
+      {
+        "agent_id": "h5-apps-script",
+        "reviewed_paths": [
+          "apps-script/Code.gs",
+          "src/lib/application.ts"
+        ],
+        "invariant": "Notification content and reference are bound to a real application record",
+        "method": "local",
+        "result": "doPost accepts any pattern-matching reference with no check against Supabase or existing rows; two POSTs with the same reference created 2 rows, and the second admin email's replyTo was the attacker's address. Recorded as hardening (no standalone boundary crossing).",
+        "artifact": "agents/h5-apps-script/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [
+      "apps-script/Code.gs:doPost:unauthenticated-mailapp-quota-relay",
+      "apps-script/Code.gs:saveFiles_:unbounded-drive-file-creation"
+    ],
+    "unresolved": [],
+    "hunter_group": "h5-apps-script",
+    "hardening": [
+      "Code.gs:75 accepts any caller-supplied pattern-matching reference with no check against Supabase or existing rows, and Code.gs:211 sets the trustee notification's replyTo to the caller's email; SETUP.md tells trustees to reply to that email. A forged notification can therefore reuse a real applicant's name and reference so trustee replies go to the attacker. Fix: have the Supabase path sign notifications (e.g. HMAC with a script-property secret) and drop or flag unsigned ones.",
+      "Code.gs:156 accepts any image/* MIME (including image/svg+xml) for Drive files; restrict to image/jpeg, image/png, image/webp and application/pdf to match the Supabase bucket.",
+      "Code.gs:209 puts the raw fullName (up to 20000 chars, may contain CR/LF) into the email subject. MailApp is expected to encode headers, but str_ could strip control characters and cap subject length.",
+      "Code.gs:236 cell_ does not prefix a value starting with an invisible character such as U+200B. Sheets does not evaluate it as a formula, but stripping leading format characters would make cell_ robust to future changes."
+    ]
+  },
+  {
+    "coverage_id": "repo%23root::.gitignore::.::ATTACK-CLASSES.md%23Obvious%20things",
+    "canonical_refs": {
+      "surface": "repo#root",
+      "boundary": ".gitignore",
+      "subsystem": ".",
+      "attack_class": "ATTACK-CLASSES.md#Obvious things"
+    },
+    "surface": "Repository-wide configuration and committed files",
+    "boundary": "No secrets, debug modes or unsafe defaults in shipped artifacts",
+    "subsystem": "Repository",
+    "attack_class": "Obvious things",
+    "starting_paths": [
+      ".env.production",
+      ".env.example",
+      ".gitignore",
+      "index.html",
+      "vercel.json",
+      "package.json",
+      "src/lib/supabase.ts",
+      "src/portal/demo.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Obvious things",
+    "selected_companion_blocks": [
+      "CLOUD-AND-DEPLOYMENT.md#Secret exposure across workload boundaries",
+      "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+      "CLOUD-AND-DEPLOYMENT.md#Universal moves",
+      "CLOUD-AND-DEPLOYMENT.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h6-supply",
+    "reviewed_paths": [
+      ".env.example",
+      ".env.production",
+      ".gitignore",
+      "index.html",
+      "src/App.tsx",
+      "src/content.ts",
+      "src/lib/application.ts",
+      "src/lib/supabase.ts",
+      "src/portal/PortalApp.tsx",
+      "src/portal/demo.ts",
+      "vercel.json"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h6-supply",
+        "reviewed_paths": [
+          ".env.production",
+          ".env.example",
+          "src/lib/supabase.ts",
+          "src/lib/application.ts",
+          "src/content.ts"
+        ],
+        "invariant": "No privileged credential is committed or bundled; committed keys are public-by-design only",
+        "method": "source",
+        "result": "The only committed key is in .env.production; its JWT payload decodes to {\"iss\":\"supabase\",\"ref\":\"qtigkjwqqkdtikqkvlgc\",\"role\":\"anon\"}, i.e. the public anon key, not service_role. No service_role/sk_/PEM/password literals in src, apps-script, supabase or index.html (grep). Hardcoded Apps Script web-app URL (src/lib/application.ts:121-122) and committee Sheet URL (src/content.ts:8-9) are public endpoints, not credentials. No .pem/.key/credentials files present.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h6-supply",
+        "reviewed_paths": [
+          "src/portal/demo.ts",
+          "src/portal/PortalApp.tsx",
+          "src/lib/supabase.ts",
+          "src/App.tsx",
+          "index.html",
+          "vercel.json"
+        ],
+        "invariant": "Demo/debug modes cannot be enabled in production by query/hash/header; no eval/dynamic code, no open redirect, no permissive CORS in shipped config",
+        "method": "source",
+        "result": "Demo mode is selected solely by the build-time supabaseConfigured boolean (src/lib/supabase.ts:8); no runtime switch. Demo data is fictional and browser-local. No eval/new Function/innerHTML/dangerouslySetInnerHTML in src. Hash router reads only #/portal paths; no redirect parameters. No CORS or cookies are configured (static hosting, session in localStorage \u2014 peer-owned). Only security TODO is src/components/Sections.tsx:223 (privacy/retention pages), not an auth gap. Git history not present in snapshot, so committed-then-removed secrets could not be checked.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h6-supply",
+        "reviewed_paths": [
+          ".gitignore"
+        ],
+        "invariant": ".gitignore covers secrets and local data files the documented operator flow creates",
+        "method": "source",
+        "result": ".gitignore covers node_modules, dist, .env.local, *.tsbuildinfo, .vercel only. It does not cover .env, .env.*.local, or the PII-bearing operator files referenced by supabase/SETUP.md (import-existing-students.sql, supabase-admins.sql); no such files are committed in the snapshot, so this is hardening only.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h6-supply",
+    "hardening": [
+      "deploy.yml grants pages:write and id-token:write at workflow level, so the build job (which runs npm ci and the build toolchain) also holds them; scope these permissions to the deploy job only.",
+      "GitHub Actions are referenced by floating major tags (actions/checkout@v4, setup-node@v4, upload-pages-artifact@v3, deploy-pages@v4); pin to full commit SHAs.",
+      ".gitignore does not cover .env, .env.*.local or the PII-bearing operator files named in supabase/SETUP.md (import-existing-students.sql, supabase-admins.sql); add them so an operator running setup.mjs from the repo copy cannot commit student data.",
+      "supabase/setup.mjs honors SUPABASE_API_BASE from the environment, sending the Management API token to any host; restrict to https://api.supabase.com or warn loudly when overridden.",
+      "supabase/setup.mjs prints the new project's database password to stdout (line 218); terminal scrollback/logging retains it.",
+      "vercel.json sets X-Frame-Options/nosniff/Referrer-Policy but GitHub Pages (the URL configured as Supabase site_url) cannot set response headers, and neither host sets a Content-Security-Policy; the portal on GitHub Pages is frameable.",
+      "Runtime background videos default to a third-party CloudFront host (src/content.ts:12-17, .env.example) whose content can change without review; ASSESSMENT.md already flags self-hosting.",
+      "Snapshot has no .git directory, so git history for committed-then-removed secrets could not be reviewed."
+    ]
+  },
+  {
+    "coverage_id": "src%2Flib%2Fapplication.ts%23saveDraft::src%2Flib%2Fsupabase.ts%23getSupabase::src::CLIENT-SIDE.md%23Browser-storage%20disclosure%20and%20stale%20authorization",
+    "canonical_refs": {
+      "surface": "src/lib/application.ts#saveDraft",
+      "boundary": "src/lib/supabase.ts#getSupabase",
+      "subsystem": "src",
+      "attack_class": "CLIENT-SIDE.md#Browser-storage disclosure and stale authorization"
+    },
+    "surface": "Browser storage of drafts and sessions",
+    "boundary": "PII and sessions readable only by the intended user",
+    "subsystem": "Public SPA",
+    "attack_class": "Browser-storage disclosure and stale authorization",
+    "starting_paths": [
+      "src/lib/application.ts",
+      "src/lib/supabase.ts",
+      "src/journey/Journey.tsx",
+      "src/portal/demo.ts",
+      "src/portal/PortalApp.tsx"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "CLIENT-SIDE.md#Browser-storage disclosure and stale authorization",
+      "CLIENT-SIDE.md#Core discipline",
+      "CLIENT-SIDE.md#Universal moves",
+      "CLIENT-SIDE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h4-client",
+    "reviewed_paths": [
+      "src/journey/Journey.tsx",
+      "src/lib/application.ts",
+      "src/lib/supabase.ts",
+      "src/portal/PortalApp.tsx",
+      "src/portal/api.ts",
+      "src/portal/demo.ts",
+      "src/portal/ui.tsx"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h4-client",
+        "reviewed_paths": [
+          "src/lib/application.ts",
+          "src/journey/Journey.tsx"
+        ],
+        "invariant": "Applicant draft PII in localStorage (jvj-application-draft-v2) is readable only by the applicant and does not reach another account or a less-trusted component",
+        "method": "source",
+        "result": "saveDraft (application.ts:96-102) stores answers only (files are never stored, declarations reset on load at :89). The only writer and reader is the Journey component on the same origin (Journey.tsx:74,92). It is cleared on successful submit (:161) and on Start over (:171). The public site has no accounts, so no other account can read it. The only other readers are the same browser profile or other code on the same origin. The site loads no third-party script (index.html loads only a Google Fonts stylesheet) and has no innerHTML sinks. No less-privileged reader is established. Retention on shared devices is recorded as hardening.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h4-client",
+        "reviewed_paths": [
+          "src/lib/supabase.ts",
+          "src/portal/api.ts",
+          "src/portal/PortalApp.tsx"
+        ],
+        "invariant": "The Supabase session in localStorage key jvj-portal-auth is not used after logout or by a different principal",
+        "method": "source",
+        "result": "createClient uses persistSession with storageKey jvj-portal-auth (supabase.ts:17). signOut calls auth.signOut (api.ts:141), which removes the stored session. PortalApp re-runs load() on SIGNED_OUT and resets session and profile (PortalApp.tsx:39-41). Authorization is enforced server-side by RLS with the JWT. Holding the token client-side grants nothing beyond the signed-in user's own authority. No stale-authorization path was found.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h4-client",
+        "reviewed_paths": [
+          "src/portal/ui.tsx",
+          "src/portal/PortalApp.tsx"
+        ],
+        "invariant": "The client-side signed-URL cache does not carry one principal's file access to another principal after an account switch",
+        "method": "source",
+        "result": "urlCache in ui.tsx:202-220 is module-level and is not cleared on sign-out. It is keyed by bucket/path, and a student's UI only requests paths from its own RLS-filtered records (PortalApp.tsx:88-89 pins non-admins to their own student_id). A later student session therefore never looks up a trustee-only key. The cached signed URLs are bearer links that expire in 30 minutes (api.ts:265). No cross-principal disclosure was reached.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h4-client",
+        "reviewed_paths": [
+          "src/portal/demo.ts",
+          "src/portal/PortalApp.tsx"
+        ],
+        "invariant": "Demo/preview-mode role state in browser storage cannot grant real authority",
+        "method": "source",
+        "result": "createDemoApi (demo.ts:131-200) keeps a fictional DB in localStorage and a role in sessionStorage. It is selected only when supabaseConfigured is false (PortalApp.tsx:15). In that mode no backend exists, so a forged role exposes only seeded fictional data. Production builds are configured via .env.production, so live mode is used.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h4-client",
+    "hardening": [
+      "Applicant draft PII (name, DOB, phone, email, family situation) persists in localStorage key jvj-application-draft-v2 with no expiry and auto-resumes for whoever opens the Apply journey next in the same browser profile (src/lib/application.ts:83-102, src/journey/Journey.tsx:74-77). Applicants on shared or internet-cafe devices could expose it to the next user. Consider sessionStorage or a short TTL, plus a clear 'not on a shared computer?' control.",
+      "GitHub Pages serves the site at https://freeaami.github.io/Jeevunjee-site/, so its origin is shared with every other GitHub Pages project of the same account. Those projects can read jvj-portal-auth (trustee access and refresh tokens) and the draft PII from localStorage. GoTrue also accepts any redirect on the same hostname. Prefer a dedicated custom domain or the Vercel deployment for the portal.",
+      "No frame-ancestors or X-Frame-Options protection is possible on the GitHub Pages deployment (only Vercel sets X-Frame-Options: DENY). Clickjacking is currently blocked only by browser third-party storage partitioning, which leaves a framed portal unauthenticated. Serving the portal only from a header-capable host would remove that dependency.",
+      "updatePassword (src/portal/api.ts:149) changes the password with only the current session and no reauthentication. Consider enabling Supabase 'Secure password change' (reauthentication nonce) so a stolen session cannot take over a trustee account permanently.",
+      "Applicant-controlled JSON in applications.answers/files is rendered without type checks in some places, for example {e.level} in Applications.tsx and f.label || f.name. A non-string object value makes React throw and breaks that trustee application view. This is an availability nuisance, not XSS. Coerce with str() everywhere."
+    ]
+  },
+  {
+    "coverage_id": "src%2Fportal%2Fadmin%2FApplications.tsx%23ApplicationAnswers::src%2Fportal%2Fadmin%2FStudentFile.tsx%23openFile::src%2Fportal::CLIENT-SIDE.md%23DOM-based%20XSS",
+    "canonical_refs": {
+      "surface": "src/portal/admin/Applications.tsx#ApplicationAnswers",
+      "boundary": "src/portal/admin/StudentFile.tsx#openFile",
+      "subsystem": "src/portal",
+      "attack_class": "CLIENT-SIDE.md#DOM-based XSS"
+    },
+    "surface": "Trustee portal rendering applicant-controlled data",
+    "boundary": "React escaping and safe URL schemes in trustee browser",
+    "subsystem": "Portal SPA",
+    "attack_class": "DOM-based XSS",
+    "starting_paths": [
+      "src/portal/admin/Applications.tsx",
+      "src/portal/admin/StudentFile.tsx",
+      "src/portal/admin/Overview.tsx",
+      "src/portal/admin/Students.tsx",
+      "src/portal/ui.tsx"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "CLIENT-SIDE.md#DOM-based XSS",
+      "CLIENT-SIDE.md#Client-side navigation confusion",
+      "CLIENT-SIDE.md#Core discipline",
+      "CLIENT-SIDE.md#Universal moves",
+      "CLIENT-SIDE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "h4-client",
+    "reviewed_paths": [
+      "src/lib/application.ts",
+      "src/portal/admin/Applications.tsx",
+      "src/portal/admin/Overview.tsx",
+      "src/portal/admin/StudentFile.tsx",
+      "src/portal/admin/Students.tsx",
+      "src/portal/api.ts",
+      "src/portal/ui.tsx",
+      "supabase/schema.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h4-client",
+        "reviewed_paths": [
+          "src/portal/admin/Applications.tsx",
+          "src/portal/admin/StudentFile.tsx",
+          "src/portal/admin/Overview.tsx",
+          "src/portal/admin/Students.tsx",
+          "src/portal/ui.tsx"
+        ],
+        "invariant": "Applicant- and student-controlled strings reach the trustee DOM only through React-escaped text or fixed-scheme URLs",
+        "method": "source",
+        "result": "No dangerouslySetInnerHTML, innerHTML, eval or document.write calls exist in src. Applicant answers are rendered as JSX text via str() (Applications.tsx:18 and the :230 onward block). The only data-derived hrefs are tel:/mailto: with fixed prefixes (Applications.tsx:131-132, StudentFile.tsx:110,112), a digits-only wa.me link (StudentFile.tsx:71,111), hash links built from DB UUIDs, and img src from createSignedUrl (ui.tsx:224-227, Applications.tsx:188-192). An SVG inside <img> cannot run script. The tab regex in StudentFile.tsx:15 is \\w+ only. React 19 rejects JSON-forged elements because $$typeof must be a Symbol. No DOM XSS on the site origin.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h4-client",
+        "reviewed_paths": [
+          "src/portal/admin/StudentFile.tsx",
+          "src/portal/admin/Applications.tsx",
+          "src/portal/api.ts",
+          "src/lib/application.ts",
+          "supabase/schema.sql"
+        ],
+        "invariant": "Opening an untrusted uploaded file must not give that document a handle to the trustee's portal window (window.opener isolation)",
+        "method": "local",
+        "result": "openFile calls window.open('', '_blank') without noopener and then assigns w.location.href to the signed storage URL (StudentFile.tsx:309-313). In local Chromium 141, a scripted image/svg+xml document on a second loopback origin opened this way navigated the opener (portal) tab to an attacker page. The buckets allow image/* (schema.sql:464), which includes SVG, and anonymous applicants may insert into applications/incoming (schema.sql:476). Whether Supabase Storage serves such an SVG inline with script enabled is a provider fact that was not observed.",
+        "artifact": "agents/h4-client/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [
+      "src/portal/admin/StudentFile.tsx:openFile:window-opener-retained-uploaded-svg-tabnabbing"
+    ],
+    "unresolved": [],
+    "hunter_group": "h4-client",
+    "hardening": [
+      "Applicant draft PII (name, DOB, phone, email, family situation) persists in localStorage key jvj-application-draft-v2 with no expiry and auto-resumes for whoever opens the Apply journey next in the same browser profile (src/lib/application.ts:83-102, src/journey/Journey.tsx:74-77). Applicants on shared or internet-cafe devices could expose it to the next user. Consider sessionStorage or a short TTL, plus a clear 'not on a shared computer?' control.",
+      "GitHub Pages serves the site at https://freeaami.github.io/Jeevunjee-site/, so its origin is shared with every other GitHub Pages project of the same account. Those projects can read jvj-portal-auth (trustee access and refresh tokens) and the draft PII from localStorage. GoTrue also accepts any redirect on the same hostname. Prefer a dedicated custom domain or the Vercel deployment for the portal.",
+      "No frame-ancestors or X-Frame-Options protection is possible on the GitHub Pages deployment (only Vercel sets X-Frame-Options: DENY). Clickjacking is currently blocked only by browser third-party storage partitioning, which leaves a framed portal unauthenticated. Serving the portal only from a header-capable host would remove that dependency.",
+      "updatePassword (src/portal/api.ts:149) changes the password with only the current session and no reauthentication. Consider enabling Supabase 'Secure password change' (reauthentication nonce) so a stolen session cannot take over a trustee account permanently.",
+      "Applicant-controlled JSON in applications.answers/files is rendered without type checks in some places, for example {e.level} in Applications.tsx and f.label || f.name. A non-string object value makes React throw and breaks that trustee application view. This is an availability nuisance, not XSS. Coerce with str() everywhere."
+    ]
+  },
+  {
+    "coverage_id": "src%2Fportal%2Fapi.ts%23deleteDocument::supabase%2Fschema.sql%23storage%20policy%20jvj%20admins%20manage%20files::supabase%2Fstorage::DATA-ISOLATION-AND-LIFECYCLE.md%23Retention%20and%20queued-work%20overrun",
+    "canonical_refs": {
+      "surface": "src/portal/api.ts#deleteDocument",
+      "boundary": "supabase/schema.sql#storage policy jvj admins manage files",
+      "subsystem": "supabase/storage",
+      "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Retention and queued-work overrun"
+    },
+    "surface": "Document, student and application deletion paths",
+    "boundary": "In-product deletion removes every copy of the applicant or student data it claims to delete",
+    "subsystem": "Supabase database and storage",
+    "attack_class": "Retention and queued-work overrun",
+    "starting_paths": [
+      "src/portal/api.ts",
+      "src/portal/admin/StudentFile.tsx",
+      "src/journey/Journey.tsx",
+      "supabase/schema.sql",
+      "apps-script/Code.gs",
+      "ASSESSMENT.md"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Retention and queued-work overrun",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Soft-delete and tombstone bypass",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 2,
+    "status": "candidate",
+    "agent_id": "h8-deletion",
+    "reviewed_paths": [
+      "ASSESSMENT.md",
+      "apps-script/Code.gs",
+      "src/journey/Journey.tsx",
+      "src/portal/admin/StudentFile.tsx",
+      "src/portal/api.ts",
+      "supabase/schema.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h8-deletion",
+        "reviewed_paths": [
+          "src/portal/api.ts",
+          "src/portal/admin/StudentFile.tsx",
+          "supabase/schema.sql"
+        ],
+        "invariant": "Trustee 'Delete' of a student document removes the underlying storage object as well as the documents row, for both 'files' and 'applications' buckets",
+        "method": "local",
+        "result": "deleteDocument deletes the documents row and calls storage remove only when bucket==='files'; enrolment-derived documents (bucket 'applications': national ID, income proof, certificates, photo) keep their blob. No storage.objects policy grants trustees delete on the 'applications' bucket, so even an explicit remove affects 0 rows. Object stays readable by trustees and still referenced by applications.files. Deleting the student row and re-running enrol_application recreates the deleted identity document.",
+        "artifact": "agents/h8-deletion/artifacts/evidence-1.txt"
+      },
+      {
+        "agent_id": "h8-deletion",
+        "reviewed_paths": [
+          "src/portal/api.ts",
+          "supabase/schema.sql"
+        ],
+        "invariant": "Deleting a 'files'-bucket document cannot leave a blob readable by a student",
+        "method": "source",
+        "result": "Row is deleted before storage remove and the remove result is not checked (api.ts:261), so a transient failure leaves an orphan blob under students/<id>/ that the student can still list/read through the path-based 'jvj students read own' policy. That is the student's own folder and needs a transient failure, so it is recorded as hardening, not a candidate.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h8-deletion",
+        "reviewed_paths": [
+          "src/portal/api.ts",
+          "src/journey/Journey.tsx",
+          "apps-script/Code.gs",
+          "ASSESSMENT.md"
+        ],
+        "invariant": "An in-product path exists to honour the applicant deletion promise across every copy (applications row, applications bucket, Apps Script Sheet row/Drive/emails)",
+        "method": "source",
+        "result": "The API has no deleteApplication or deleteStudent operation and no storage delete on the applications bucket. The Apps Script Sheet row, Drive folder and notification emails are separate copies that no in-product operation touches. Journey.tsx:491 promises deletion on request. Recorded in the candidate and in hardening.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "src/portal/api.ts:deleteDocument:applications-bucket-blob-retained-and-resurrected-by-enrol_application"
+    ],
+    "unresolved": [],
+    "hunter_group": "h8-deletion",
+    "critic_reason": "This merges the two wave-1 uncovered gaps from h2-storage and h3-rls. Neither became a unit. The product states a deletion contract: the applicant declaration at Journey.tsx:491 says 'I can ask for them to be deleted at any time'. The trustee UI tells the trustee a document is deleted ('This can't be undone', StudentFile.tsx:408). However, deleteDocument removes the storage object only when bucket='files' (api.ts:261). No storage DELETE policy covers the applications bucket (schema.sql:479-484 grants ALL only on 'files'). Student and application deletion cascade DB rows but leave applications/incoming objects (national ID images, income proofs) and the Apps Script Sheet and Drive copies. No unit verified whether in-product deletion removes every copy, or whether surviving copies stay reachable (for example, a re-enrolled or orphaned path still readable through 'jvj students read own application files').",
+    "hardening": [
+      "src/portal/api.ts:258-262: deleteDocument deletes the documents row before the storage remove and ignores the remove error. On a transient failure an orphan blob stays under files/students/<id>/ and the student can still list and read it through the path-based 'jvj students read own' policy. Remove the blob first and check the result.",
+      "src/portal/api.ts:210-214: setStudentPhoto replaces photo_path without removing the previous object, so old photos accumulate in files/students/<id>/ (still readable by that student and trustees).",
+      "Deleting the 'photo' document does not clear students.photo_bucket/photo_path set by enrol_application (schema.sql:337-338), so trustees still see the 'deleted' photo in the student file.",
+      "No in-product operation deletes an application, a student, or any applications/incoming/* object, even though Journey.tsx:491 promises deletion on request. A student row deleted through PostgREST cascades to documents but leaves every storage object under files/students/<id>/ and applications/incoming/. A documented operator purge procedure (or RPC) is needed."
+    ]
+  },
+  {
+    "coverage_id": "src%2Fportal%2Fapi.ts%23sendPasswordReset::src%2Fportal%2Fapi.ts%23createLiveApi::src%2Fportal::WEB-PROTOCOL-AND-AUTH.md%23Password%20reset%20and%20broader%20recovery",
+    "canonical_refs": {
+      "surface": "src/portal/api.ts#sendPasswordReset",
+      "boundary": "src/portal/api.ts#createLiveApi",
+      "subsystem": "src/portal",
+      "attack_class": "WEB-PROTOCOL-AND-AUTH.md#Password reset and broader recovery"
+    },
+    "surface": "Client auth flows: sign-in, sign-up, password reset, routing",
+    "boundary": "Redirects and auth state bound to the site origin",
+    "subsystem": "Portal SPA",
+    "attack_class": "Password reset and broader recovery",
+    "starting_paths": [
+      "src/portal/api.ts",
+      "src/portal/Login.tsx",
+      "src/portal/PortalApp.tsx",
+      "src/App.tsx",
+      "index.html",
+      "vercel.json"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Password reset and broader recovery",
+      "CLIENT-SIDE.md#Clickjacking",
+      "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
+      "CLIENT-SIDE.md#Core discipline",
+      "CLIENT-SIDE.md#Universal moves",
+      "CLIENT-SIDE.md#Validation rules",
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h4-client",
+    "reviewed_paths": [
+      ".github/workflows/deploy.yml",
+      "index.html",
+      "src/App.tsx",
+      "src/portal/Login.tsx",
+      "src/portal/PortalApp.tsx",
+      "src/portal/api.ts",
+      "supabase/SETUP.md",
+      "supabase/setup.mjs",
+      "vercel.json",
+      "vite.config.ts"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h4-client",
+        "reviewed_paths": [
+          "src/portal/api.ts",
+          "src/portal/Login.tsx",
+          "supabase/setup.mjs",
+          "supabase/SETUP.md"
+        ],
+        "invariant": "The password-reset delivery URL is not attacker-influenced and is limited by the redirect allow-list",
+        "method": "source",
+        "result": "redirectTo is built from the victim's own location.origin and pathname (api.ts:145), which no request header or attacker can influence in the victim's browser. Token generation, expiry and one-time use are handled by Supabase Auth, not repository code. An attacker who calls resetPasswordForEmail directly is limited by the server allow-list. setup.mjs:191-193 and SETUP.md:48 set site_url and uri_allow_list to https://freeaami.github.io/Jeevunjee-site/**, an owner-controlled host. The Login.tsx:30 response is the same whether or not the account exists. No accepted invalid recovery transition was found in source.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h4-client",
+        "reviewed_paths": [
+          "src/portal/PortalApp.tsx",
+          "src/portal/Login.tsx",
+          "src/portal/api.ts"
+        ],
+        "invariant": "The recovery session only leads to the set-new-password step and normal session handling",
+        "method": "source",
+        "result": "PASSWORD_RECOVERY sets recovering (PortalApp.tsx:40), and SetNewPassword calls auth.updateUser({password}) (api.ts:149, Login.tsx:114-146). This is standard Supabase recovery and needs the emailed token-backed session. No client-side bypass exists: authority comes from the JWT that Supabase verifies.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h4-client",
+        "reviewed_paths": [
+          "src/App.tsx",
+          "index.html",
+          "vercel.json",
+          "vite.config.ts",
+          ".github/workflows/deploy.yml"
+        ],
+        "invariant": "State-changing portal actions cannot be completed in a cross-site frame, and no Host/forwarded header influences auth URLs",
+        "method": "source",
+        "result": "Vercel sends X-Frame-Options: DENY (vercel.json). GitHub Pages cannot set headers, and index.html has no frame protection. However, portal authority lives only in localStorage (jvj-portal-auth), and current Chromium, Firefox and Safari partition storage in cross-site iframes. A framed portal therefore has no trustee session and shows the login form. There is no server code, so no Host or X-Forwarded-* header influences reset links or routing. The hash router (App.tsx:11-27) only selects components.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h4-client",
+    "hardening": [
+      "Applicant draft PII (name, DOB, phone, email, family situation) persists in localStorage key jvj-application-draft-v2 with no expiry and auto-resumes for whoever opens the Apply journey next in the same browser profile (src/lib/application.ts:83-102, src/journey/Journey.tsx:74-77). Applicants on shared or internet-cafe devices could expose it to the next user. Consider sessionStorage or a short TTL, plus a clear 'not on a shared computer?' control.",
+      "GitHub Pages serves the site at https://freeaami.github.io/Jeevunjee-site/, so its origin is shared with every other GitHub Pages project of the same account. Those projects can read jvj-portal-auth (trustee access and refresh tokens) and the draft PII from localStorage. GoTrue also accepts any redirect on the same hostname. Prefer a dedicated custom domain or the Vercel deployment for the portal.",
+      "No frame-ancestors or X-Frame-Options protection is possible on the GitHub Pages deployment (only Vercel sets X-Frame-Options: DENY). Clickjacking is currently blocked only by browser third-party storage partitioning, which leaves a framed portal unauthenticated. Serving the portal only from a header-capable host would remove that dependency.",
+      "updatePassword (src/portal/api.ts:149) changes the password with only the current session and no reauthentication. Consider enabling Supabase 'Secure password change' (reauthentication nonce) so a stolen session cannot take over a trustee account permanently.",
+      "Applicant-controlled JSON in applications.answers/files is rendered without type checks in some places, for example {e.level} in Applications.tsx and f.label || f.name. A non-string object value makes React throw and breaks that trustee application view. This is an availability nuisance, not XSS. Coerce with str() everywhere."
+    ]
+  },
+  {
+    "coverage_id": "src%2Fportal%2Fapi.ts%23signUp::supabase%2Fschema.sql%23public.handle_new_user::supabase%2Fauth::DATA-ISOLATION-AND-LIFECYCLE.md%23Enumeration%20and%20aggregate%20oracles",
+    "canonical_refs": {
+      "surface": "src/portal/api.ts#signUp",
+      "boundary": "supabase/schema.sql#public.handle_new_user",
+      "subsystem": "supabase/auth",
+      "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Enumeration and aggregate oracles"
+    },
+    "surface": "Supabase Auth sign-up and sign-in responses",
+    "boundary": "Anonymous callers cannot learn which emails hold portal accounts",
+    "subsystem": "Supabase Auth",
+    "attack_class": "Enumeration and aggregate oracles",
+    "starting_paths": [
+      "src/portal/api.ts",
+      "src/portal/Login.tsx",
+      "supabase/setup.mjs",
+      "supabase/SETUP.md",
+      "supabase/schema.sql"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Feature abuse and data leakage",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Enumeration and aggregate oracles",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 3,
+    "status": "candidate",
+    "agent_id": "h9-enumeration",
+    "reviewed_paths": [
+      "src/portal/Login.tsx",
+      "src/portal/api.ts",
+      "supabase/SETUP.md",
+      "supabase/schema.sql",
+      "supabase/setup.mjs"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h9-enumeration",
+        "reviewed_paths": [
+          "src/portal/api.ts",
+          "src/portal/Login.tsx",
+          "supabase/setup.mjs",
+          "supabase/SETUP.md",
+          "supabase/schema.sql"
+        ],
+        "invariant": "An anonymous caller using the public anon key cannot tell from sign-up responses whether an email already has a portal (trustee or student) account.",
+        "method": "source",
+        "result": "setup.mjs:193 and SETUP.md:43 turn on mailer_autoconfirm, so 'Confirm email' is off. The client calls auth.signUp directly with the public key (api.ts:126-133) and passes the raw provider error into friendlyError, which has a separate branch for 'already registered' (api.ts:51, shown by Login.tsx:33). For an email with no account and no valid code, the handle_new_user trigger raises JVJ_SIGNUP_NOT_ALLOWED (schema.sql:257). The provider then reports this as 'Database error saving new user', and no account is created. These are two different responses, which gives an oracle for account existence. Whether GoTrue returns user_already_exists or an obfuscated response when autoconfirm is on is provider behaviour that the source does not show, so this is needs_validation. Sign-in uses one 'Invalid login credentials' message for every failure (api.ts:50, 121-124), so it is not an oracle. The trigger's single exception for a bad, expired or used code gives no extra detail about code state.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "supabase/schema.sql:handle_new_user+supabase/setup.mjs:mailer_autoconfirm:signup-account-existence-oracle"
+    ],
+    "unresolved": [],
+    "hunter_group": "h9-enumeration",
+    "critic_reason": "setup.mjs:190-194 and SETUP.md:43 turn on mailer_autoconfirm. With autoconfirm on, signUp gives a different result for a registered email ('already registered', mapped at api.ts:51), for a refused one (JVJ_SIGNUP_NOT_ALLOWED, api.ts:48) and for an unclaimed admin_emails address (success, schema.sql:238-242). Portal accounts belong only to scholarship students and trustees, so an account-existence answer shows that a named person is a trust beneficiary, which reveals financial hardship. No unit selected the enumeration class. The handle_new_user units checked only who gets the admin role, and the password-reset unit checked only the reset response (Login.tsx:30).",
+    "hardening": [
+      "Make sign-up responses uniform. For example, route account creation through an RPC or an Edge Function that validates the access code or allow-list first and always returns the same generic message. Alternatively, turn on 'Confirm email' or GoTrue's obfuscated signup response and handle confirmation through the access-code flow.",
+      "Sign-in already returns one generic message for wrong email and wrong password (api.ts:50); keep it that way."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fschema.sql%23function-execute-grants::supabase%2Fschema.sql%23public.is_admin::supabase::ATTACK-CLASSES.md%23Chained%20vulnerabilities%20and%20trust%20boundaries",
+    "canonical_refs": {
+      "surface": "supabase/schema.sql#function-execute-grants",
+      "boundary": "supabase/schema.sql#public.is_admin",
+      "subsystem": "supabase",
+      "attack_class": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries"
+    },
+    "surface": "Direct PostgREST access to functions and tables with the public anon key",
+    "boundary": "SECURITY DEFINER functions enforce caller role internally",
+    "subsystem": "Supabase database",
+    "attack_class": "Chained vulnerabilities and trust boundaries",
+    "starting_paths": [
+      "supabase/schema.sql",
+      ".env.production"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Chained vulnerabilities and trust boundaries",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#API-key scope and resource binding",
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h1-anon-db",
+    "reviewed_paths": [
+      ".env.production",
+      "supabase/schema.sql",
+      "supabase/tests/supabase_shim.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h1-anon-db",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          ".env.production"
+        ],
+        "invariant": "Every public-schema function executable by anon/authenticated through PostgREST with the public anon key either is harmless or enforces the caller role internally; random_code is not executable; tables expose nothing to anon",
+        "method": "source",
+        "result": "The SECURITY DEFINER RPCs enrol_application (schema.sql:326) and issue_access_code (:269) call is_admin() first. is_admin and my_student_id (:177-185) only reveal facts about the caller's own auth.uid(). handle_new_user and instalment_student are trigger functions. random_code is revoked from anon, authenticated and public (:455). RLS is enabled on all ten tables (:396-405) and none of them has an anon policy. .env.production holds only the URL and the anon key, which is public by design.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h1-anon-db",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "supabase/tests/supabase_shim.sql"
+        ],
+        "invariant": "Anon cannot use any executable function or table to gain admin effects",
+        "method": "local",
+        "result": "has_function_privilege shows anon can execute enrol_application, handle_new_user, instalment_student, is_admin, issue_access_code, my_student_id and submit_application. Called as anon: enrol_application and issue_access_code raise 'not allowed'; random_code gives 'permission denied'; handle_new_user gives 'trigger functions can only be called as triggers'; is_admin() returns f and my_student_id() returns null; admin_emails and profiles return 0 rows.",
+        "artifact": "agents/h1-anon-db/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h1-anon-db",
+    "hardening": [
+      "submit_application accepts any path matching ^incoming/<36 hex-or-dash>/<name>, including another applicant's object path. enrol_application copies it into documents, and the 'jvj students read own application files' storage policy would then let the enrolled student read that object. The other applicant's random UUID folder is not disclosed to anon, so this is not exploitable now. Binding paths to a server-issued upload folder would close it.",
+      "enrol_application casts applicant-controlled dateOfBirth, durationYears, totalFee*, plan amounts and file size with ::date, ::numeric and ::bigint without guarding them. A malformed value makes enrolment of that same application fail, which needs trustee cleanup but has no cross-principal effect.",
+      "Supabase's default privileges and PostgreSQL's PUBLIC execute make every public function executable by anon. Only random_code is revoked. Explicitly revoking execute on is_admin, my_student_id, enrol_application, issue_access_code and the trigger functions from anon would shrink the surface, though each is currently safe."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fschema.sql%23policy%20student%20reads%20own::supabase%2Fschema.sql%23public.my_student_id::supabase::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "supabase/schema.sql#policy student reads own",
+      "boundary": "supabase/schema.sql#public.my_student_id",
+      "subsystem": "supabase",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "Authenticated PostgREST table access as a student",
+    "boundary": "Student rows filtered by my_student_id; admin by is_admin",
+    "subsystem": "Supabase database",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "supabase/schema.sql",
+      "src/portal/api.ts",
+      "src/portal/admin/StudentFile.tsx"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Policy and query disagreement",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h3-rls",
+    "reviewed_paths": [
+      "src/lib/application.ts",
+      "src/portal/admin/StudentFile.tsx",
+      "src/portal/api.ts",
+      "supabase/schema.sql",
+      "supabase/tests/run_security_tests.py",
+      "supabase/tests/supabase_shim.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h3-rls",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/portal/api.ts",
+          "src/portal/admin/StudentFile.tsx"
+        ],
+        "invariant": "Every student-reachable read and write on public tables is bound to public.my_student_id() (profiles.id = auth.uid() and role = 'student'), and no weaker policy or client-supplied field grants a student cross-file access. This covers students, courses, instalments, payments, documents, notes, profiles, applications and admin_emails.",
+        "method": "source",
+        "result": "RLS is enabled on all ten public tables (schema.sql:396-405). The student policies are SELECT only, keyed on my_student_id() (436-440). Notes, applications and admin_emails have no student policy. Profiles allows only the reader's own row (433). The documents INSERT check (443-450) pins student_id, uploaded_by = auth.uid(), role 'student', bucket 'files', a path prefix of students/<own id>/ and a limited set of categories. Students have no UPDATE or DELETE policy anywhere. The values in api.ts loadStudent's .eq('student_id', id) filters are client-chosen, but RLS still applies to every query, so they grant nothing extra. The is_admin() and my_student_id() SECURITY DEFINER helpers pin search_path and read only profiles, and profiles has no student or anon write policy. Instalment notes and payment notes are readable by the student by design: StudentFile renders them to the student, and only the separate notes table is labelled trustee-only.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h3-rls",
+        "reviewed_paths": [
+          "supabase/tests/run_security_tests.py",
+          "supabase/tests/supabase_shim.sql",
+          "supabase/schema.sql"
+        ],
+        "invariant": "Student A cannot read or modify student B's rows or storage objects, and cannot escalate to trustee RPCs.",
+        "method": "local",
+        "result": "The repo's 64-check RLS suite was run unmodified in the sandbox against local Postgres 16 and reported 0 failures. It covers: a student sees only their own students, instalments, payments and profile; cannot see notes or applications; cannot write rows for another student; cannot upload to another student's folder; and cannot call issue_access_code or enrol_application.",
+        "artifact": "agents/h3-rls/artifacts/evidence-2.txt"
+      },
+      {
+        "agent_id": "h3-rls",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/lib/application.ts"
+        ],
+        "invariant": "The storage policy 'jvj students read own application files' (schema.sql:497-501) authorizes applications-bucket reads through documents.path. Those paths are copied by enrol_application (schema.sql:374-386) from applicant-claimed p_files paths, which are only regex-checked (schema.sql:298).",
+        "method": "local",
+        "result": "With dummy data, an applicant who put another applicant's object path incoming/<uuid>/... in their own p_files was enrolled by a trustee. The resulting student could then SELECT the other applicant's storage object (CHECK1). Exploiting this requires knowing the victim's per-submission folder, which comes from crypto.randomUUID() (src/lib/application.ts:174). No source-visible path reveals that folder to non-trustees: anon and students cannot list storage.objects, and the Apps Script notification sends files: []. This is recorded as hardening, not a finding.",
+        "artifact": "agents/h3-rls/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h3-rls",
+    "hardening": [
+      "Applicant-claimed storage paths are not bound to their uploader. submit_application (supabase/schema.sql:298) accepts any path matching incoming/<36 hex>/<name>. enrol_application (supabase/schema.sql:382-385) copies those paths into documents, and the storage policy 'jvj students read own application files' (supabase/schema.sql:497-501) then grants the enrolled student read access to whatever object each path names. It was shown locally that a student can read another applicant's ID image if the student knows that applicant's random folder UUID (evidence-1 CHECK1). Fix: require every path in one submission to share a single folder, reject a folder that any existing application already references, and in enrol_application skip any path referenced by another application.",
+      "Revoking access has to be done by hand outside the app. Removing an email from admin_emails does not demote an existing admin profile (CHECK4). Profiles has no admin UPDATE or DELETE policy (supabase/schema.sql:424), so no trustee can revoke a student login or another trustee from the portal. Student status 'withdrawn' or 'completed' is not part of any RLS predicate (CHECK2). Consider adding an admin-only revoke_login RPC that deletes the profile and the auth user, and optionally adding status = 'active' (or not 'withdrawn') to my_student_id().",
+      "Students can read access_code and access_code_expires on their own students row (supabase/schema.sql:436). That includes a code a trustee issued 'for another login' (src/portal/admin/StudentFile.tsx:544). The impact stays within the same student file. Column-level grants or a view could hide these columns from students.",
+      "Deleting a student keeps the source applications row with its full PII (applications.student_id is set to null) and leaves orphaned storage objects under files/students/<id>/ and applications/incoming/<folder>/. These are readable only by admins, but ASSESSMENT.md tells applicants they can ask for deletion, and the app has no deletion path that removes these copies."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fschema.sql%23public.enrol_application::supabase%2Fschema.sql%23profiles%20on%20delete%20cascade::supabase::DATA-ISOLATION-AND-LIFECYCLE.md%23Stale%20authorization%20and%20derived%20copy%20use",
+    "canonical_refs": {
+      "surface": "supabase/schema.sql#public.enrol_application",
+      "boundary": "supabase/schema.sql#profiles on delete cascade",
+      "subsystem": "supabase",
+      "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use"
+    },
+    "surface": "Student and trustee lifecycle: enrolment, deletion, code reissue",
+    "boundary": "Revocation and deletion remove access and data copies",
+    "subsystem": "Supabase database",
+    "attack_class": "Stale authorization and derived copy use",
+    "starting_paths": [
+      "supabase/schema.sql",
+      "src/portal/api.ts",
+      "src/portal/admin/StudentFile.tsx",
+      "src/portal/admin/Applications.tsx"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Soft-delete and tombstone bypass",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h3-rls",
+    "reviewed_paths": [
+      "ASSESSMENT.md",
+      "src/portal/admin/Applications.tsx",
+      "src/portal/admin/StudentFile.tsx",
+      "src/portal/admin/forms.tsx",
+      "src/portal/api.ts",
+      "supabase/SETUP.md",
+      "supabase/schema.sql",
+      "supabase/tests/supabase_shim.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h3-rls",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/portal/api.ts",
+          "src/portal/admin/StudentFile.tsx",
+          "src/portal/admin/Applications.tsx",
+          "src/portal/admin/forms.tsx",
+          "supabase/SETUP.md",
+          "ASSESSMENT.md"
+        ],
+        "invariant": "Enrolment, code reissue and deletion do not leave a stale grant that authorizes later access beyond what the product states. The checks cover: enrol_application being admin-only and idempotent; access codes being single-use; deletion of a student revoking access; and a source-stated revocation contract for withdrawn students or removed trustees.",
+        "method": "source",
+        "result": "enrol_application checks is_admin() (schema.sql:326), locks the application row, and returns the existing student_id if the application was already enrolled. handle_new_user locks the student row with FOR UPDATE and clears the code once it is used (246-252). issue_access_code overwrites any previous code, so a reissued code invalidates the earlier one (274). The UI deliberately offers 'Create a code for another login' (StudentFile.tsx:544), so several logins per student is intended. Deleting a student cascades to profiles (schema.sql:78), and every student policy depends on profiles, so access ends without depending on the JWT. No source or docs state that a withdrawn status, removal from admin_emails, or a reissued code revokes an existing login, and the app has no revoke or delete-student-login function. That makes these absent features (see hardening), not broken guarantees.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h3-rls",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "supabase/tests/supabase_shim.sql"
+        ],
+        "invariant": "Lifecycle transitions observed with dummy tenants: status withdrawn, reissued code, trustee removed from the allow-list, and student deletion.",
+        "method": "local",
+        "result": "CHECK2: a student set to 'withdrawn' still reads their own file. CHECK3: after a reissue, the student can read the newly issued access_code on their own row. CHECK4: is_admin() stays true after the trustee's email is deleted from admin_emails. CHECK4b: the trustee cannot delete profiles rows, because profiles has a select-only admin policy. CHECK5: after a student is deleted, their profile is gone and they can see 0 students, documents or storage objects. The auth.users row and the applications rows with the applicant's PII remain, readable by admins only. None of these crosses a stated boundary.",
+        "artifact": "agents/h3-rls/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h3-rls",
+    "hardening": [
+      "Applicant-claimed storage paths are not bound to their uploader. submit_application (supabase/schema.sql:298) accepts any path matching incoming/<36 hex>/<name>. enrol_application (supabase/schema.sql:382-385) copies those paths into documents, and the storage policy 'jvj students read own application files' (supabase/schema.sql:497-501) then grants the enrolled student read access to whatever object each path names. It was shown locally that a student can read another applicant's ID image if the student knows that applicant's random folder UUID (evidence-1 CHECK1). Fix: require every path in one submission to share a single folder, reject a folder that any existing application already references, and in enrol_application skip any path referenced by another application.",
+      "Revoking access has to be done by hand outside the app. Removing an email from admin_emails does not demote an existing admin profile (CHECK4). Profiles has no admin UPDATE or DELETE policy (supabase/schema.sql:424), so no trustee can revoke a student login or another trustee from the portal. Student status 'withdrawn' or 'completed' is not part of any RLS predicate (CHECK2). Consider adding an admin-only revoke_login RPC that deletes the profile and the auth user, and optionally adding status = 'active' (or not 'withdrawn') to my_student_id().",
+      "Students can read access_code and access_code_expires on their own students row (supabase/schema.sql:436). That includes a code a trustee issued 'for another login' (src/portal/admin/StudentFile.tsx:544). The impact stays within the same student file. Column-level grants or a view could hide these columns from students.",
+      "Deleting a student keeps the source applications row with its full PII (applications.student_id is set to null) and leaves orphaned storage objects under files/students/<id>/ and applications/incoming/<folder>/. These are readable only by admins, but ASSESSMENT.md tells applicants they can ask for deletion, and the app has no deletion path that removes these copies."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fschema.sql%23public.handle_new_user::supabase%2Fschema.sql%23public.handle_new_user::supabase::ATTACK-CLASSES.md%23Business%20logic",
+    "canonical_refs": {
+      "surface": "supabase/schema.sql#public.handle_new_user",
+      "boundary": "supabase/schema.sql#public.handle_new_user",
+      "subsystem": "supabase",
+      "attack_class": "ATTACK-CLASSES.md#Business logic"
+    },
+    "surface": "Supabase Auth sign-up trigger",
+    "boundary": "Sign-up allowed only for unclaimed admin email or valid access code",
+    "subsystem": "Supabase database",
+    "attack_class": "Business logic",
+    "starting_paths": [
+      "supabase/schema.sql",
+      "src/portal/api.ts",
+      "src/portal/Login.tsx"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Business logic",
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Account linking and identity collision",
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "h1-anon-db",
+    "reviewed_paths": [
+      "apps-script/Code.gs",
+      "src/portal/Login.tsx",
+      "src/portal/api.ts",
+      "supabase/SETUP.md",
+      "supabase/schema.sql",
+      "supabase/setup.mjs",
+      "supabase/tests/supabase_shim.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h1-anon-db",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/portal/api.ts",
+          "src/portal/Login.tsx",
+          "supabase/setup.mjs",
+          "supabase/SETUP.md",
+          "apps-script/Code.gs"
+        ],
+        "invariant": "Only the real owner of an allow-listed trustee email may get the admin role at sign-up",
+        "method": "source",
+        "result": "handle_new_user (schema.sql:238-242) gives role 'admin' to whoever first inserts an auth.users row with an unclaimed admin_emails address. The only proof it relies on is the email string. setup.mjs:193 sets mailer_autoconfirm:true and SETUP.md:43 tells the operator to turn off 'Confirm email', so a public signUp (api.ts:126-131) creates the user with no proof of mailbox ownership. Apps Script confirmApplicant_ sets replyTo to ADMIN_EMAILS (Code.gs:24,222), which can tell any applicant the trustee addresses.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h1-anon-db",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "supabase/tests/supabase_shim.sql"
+        ],
+        "invariant": "Sign-up with an allow-listed email and no access code must not grant admin unless email ownership is proved",
+        "method": "local",
+        "result": "After admin_emails gets 'trustee@x.test', an auth.users insert of 'TRUSTEE@x.test' (standing in for an autoconfirmed signUp) creates profile role=admin and sets claimed=t. Acting as that uid, is_admin() returns t and the session reads all dummy applications (with answers) and students (with nic).",
+        "artifact": "agents/h1-anon-db/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [
+      "supabase/schema.sql:handle_new_user:admin-email-claim-without-ownership-proof"
+    ],
+    "unresolved": [],
+    "hunter_group": "h1-anon-db",
+    "hardening": [
+      "submit_application accepts any path matching ^incoming/<36 hex-or-dash>/<name>, including another applicant's object path. enrol_application copies it into documents, and the 'jvj students read own application files' storage policy would then let the enrolled student read that object. The other applicant's random UUID folder is not disclosed to anon, so this is not exploitable now. Binding paths to a server-issued upload folder would close it.",
+      "enrol_application casts applicant-controlled dateOfBirth, durationYears, totalFee*, plan amounts and file size with ::date, ::numeric and ::bigint without guarding them. A malformed value makes enrolment of that same application fail, which needs trustee cleanup but has no cross-principal effect.",
+      "Supabase's default privileges and PostgreSQL's PUBLIC execute make every public function executable by anon. Only random_code is revoked. Explicitly revoking execute on is_admin, my_student_id, enrol_application, issue_access_code and the trigger functions from anon would shrink the surface, though each is currently safe."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fschema.sql%23public.handle_new_user::supabase%2Fschema.sql%23public.issue_access_code::supabase::ATTACK-CLASSES.md%23Cryptography%20and%20secrets",
+    "canonical_refs": {
+      "surface": "supabase/schema.sql#public.handle_new_user",
+      "boundary": "supabase/schema.sql#public.issue_access_code",
+      "subsystem": "supabase",
+      "attack_class": "ATTACK-CLASSES.md#Cryptography and secrets"
+    },
+    "surface": "Supabase Auth sign-up trigger",
+    "boundary": "Access codes are unguessable, single-use and expiring",
+    "subsystem": "Supabase database",
+    "attack_class": "Cryptography and secrets",
+    "starting_paths": [
+      "supabase/schema.sql",
+      "src/portal/admin/StudentFile.tsx"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Cryptography and secrets",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h1-anon-db",
+    "reviewed_paths": [
+      "src/portal/admin/StudentFile.tsx",
+      "src/portal/api.ts",
+      "supabase/schema.sql",
+      "supabase/tests/supabase_shim.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h1-anon-db",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/portal/admin/StudentFile.tsx",
+          "src/portal/api.ts"
+        ],
+        "invariant": "Access codes are unguessable, single-use and expiring, and only admins can issue them",
+        "method": "source",
+        "result": "random_code (schema.sql:188-206) takes bytes from gen_random_uuid (CSPRNG), skips the version/variant bytes 6 and 8, and maps byte%32 onto a 32-character alphabet with no bias. An 8-character code is 40 bits. issue_access_code is admin-gated (:269), loops on collisions and sets a 14-day expiry (:274). handle_new_user matches on code and expiry > now() with FOR UPDATE, then nulls the code (:246-252). The client strips access_code from student updates (api.ts:205).",
+        "artifact": null
+      },
+      {
+        "agent_id": "h1-anon-db",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "supabase/tests/supabase_shim.sql"
+        ],
+        "invariant": "Expired and reused codes are refused; normalisation does not widen matching",
+        "method": "local",
+        "result": "An expired code raised JVJ_SIGNUP_NOT_ALLOWED. A valid code in lowercase with a hyphen was accepted once (normalised to uppercase with the hyphen stripped). Reusing the same code raised JVJ_SIGNUP_NOT_ALLOWED.",
+        "artifact": "agents/h1-anon-db/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h1-anon-db",
+    "hardening": [
+      "submit_application accepts any path matching ^incoming/<36 hex-or-dash>/<name>, including another applicant's object path. enrol_application copies it into documents, and the 'jvj students read own application files' storage policy would then let the enrolled student read that object. The other applicant's random UUID folder is not disclosed to anon, so this is not exploitable now. Binding paths to a server-issued upload folder would close it.",
+      "enrol_application casts applicant-controlled dateOfBirth, durationYears, totalFee*, plan amounts and file size with ::date, ::numeric and ::bigint without guarding them. A malformed value makes enrolment of that same application fail, which needs trustee cleanup but has no cross-principal effect.",
+      "Supabase's default privileges and PostgreSQL's PUBLIC execute make every public function executable by anon. Only random_code is revoked. Explicitly revoking execute on is_admin, my_student_id, enrol_application, issue_access_code and the trigger functions from anon would shrink the surface, though each is currently safe."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fschema.sql%23public.submit_application::supabase%2Fschema.sql%23public.submit_application::supabase::ATTACK-CLASSES.md%23Access%20control",
+    "canonical_refs": {
+      "surface": "supabase/schema.sql#public.submit_application",
+      "boundary": "supabase/schema.sql#public.submit_application",
+      "subsystem": "supabase",
+      "attack_class": "ATTACK-CLASSES.md#Access control"
+    },
+    "surface": "Anonymous RPC submit_application",
+    "boundary": "Anon may only insert via validated RPC; no anon table policies",
+    "subsystem": "Supabase database",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "supabase/schema.sql",
+      "src/lib/application.ts"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h1-anon-db",
+    "reviewed_paths": [
+      "src/lib/application.ts",
+      "supabase/schema.sql",
+      "supabase/tests/supabase_shim.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h1-anon-db",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/lib/application.ts"
+        ],
+        "invariant": "Anon can only insert a validated application row through submit_application. It cannot set status, reference, student_id or review_notes, and cannot read anything back.",
+        "method": "source",
+        "result": "The INSERT (schema.sql:306-308) sets only reference (server-generated), full_name, email, phone, answers and files, so status, student_id and review_notes keep their defaults. The function returns only the reference. Anon has no table policy on applications. File paths must match ^incoming/[0-9a-f-]{36}/[^/]+$ (:298). The client uses a crypto.randomUUID folder (application.ts:174-181).",
+        "artifact": null
+      },
+      {
+        "agent_id": "h1-anon-db",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "supabase/tests/supabase_shim.sql"
+        ],
+        "invariant": "Malformed file entries are rejected",
+        "method": "local",
+        "result": "A non-object file element and a path with an embedded newline were both rejected with 'invalid file path'.",
+        "artifact": "agents/h1-anon-db/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h1-anon-db",
+    "hardening": [
+      "submit_application accepts any path matching ^incoming/<36 hex-or-dash>/<name>, including another applicant's object path. enrol_application copies it into documents, and the 'jvj students read own application files' storage policy would then let the enrolled student read that object. The other applicant's random UUID folder is not disclosed to anon, so this is not exploitable now. Binding paths to a server-issued upload folder would close it.",
+      "enrol_application casts applicant-controlled dateOfBirth, durationYears, totalFee*, plan amounts and file size with ::date, ::numeric and ::bigint without guarding them. A malformed value makes enrolment of that same application fail, which needs trustee cleanup but has no cross-principal effect.",
+      "Supabase's default privileges and PostgreSQL's PUBLIC execute make every public function executable by anon. Only random_code is revoked. Explicitly revoking execute on is_admin, my_student_id, enrol_application, issue_access_code and the trigger functions from anon would shrink the surface, though each is currently safe."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fschema.sql%23public.submit_application::supabase%2Fschema.sql%23public.submit_application::supabase::ATTACK-CLASSES.md%23Injection",
+    "canonical_refs": {
+      "surface": "supabase/schema.sql#public.submit_application",
+      "boundary": "supabase/schema.sql#public.submit_application",
+      "subsystem": "supabase",
+      "attack_class": "ATTACK-CLASSES.md#Injection"
+    },
+    "surface": "Anonymous RPC submit_application",
+    "boundary": "Anon may only insert via validated RPC; no anon table policies",
+    "subsystem": "Supabase database",
+    "attack_class": "Injection",
+    "starting_paths": [
+      "supabase/schema.sql",
+      "src/lib/application.ts",
+      "src/portal/admin/Applications.tsx"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Injection",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h1-anon-db",
+    "reviewed_paths": [
+      "src/lib/application.ts",
+      "src/portal/admin/Applications.tsx",
+      "supabase/schema.sql",
+      "supabase/tests/supabase_shim.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h1-anon-db",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/lib/application.ts",
+          "src/portal/admin/Applications.tsx"
+        ],
+        "invariant": "Applicant answers and file metadata never reach dynamic SQL or another interpreter on the database side",
+        "method": "source",
+        "result": "submit_application and enrol_application use only static PL/pgSQL with bound values. The only EXECUTE format() calls (schema.sql:411-413) use constant table names. enrol_application casts applicant strings with ::date, ::numeric and ::bigint, which at most makes enrolment of that same application fail. Rendering of answers in Applications.tsx is the CLIENT-SIDE DOM XSS peer unit's coverage.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h1-anon-db",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "supabase/tests/supabase_shim.sql"
+        ],
+        "invariant": "SQL metacharacters in answers are stored literally",
+        "method": "local",
+        "result": "fullName \"x'); drop table students;--\" was accepted as data (a reference was returned) and the students table was unchanged.",
+        "artifact": "agents/h1-anon-db/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h1-anon-db",
+    "hardening": [
+      "submit_application accepts any path matching ^incoming/<36 hex-or-dash>/<name>, including another applicant's object path. enrol_application copies it into documents, and the 'jvj students read own application files' storage policy would then let the enrolled student read that object. The other applicant's random UUID folder is not disclosed to anon, so this is not exploitable now. Binding paths to a server-issued upload folder would close it.",
+      "enrol_application casts applicant-controlled dateOfBirth, durationYears, totalFee*, plan amounts and file size with ::date, ::numeric and ::bigint without guarding them. A malformed value makes enrolment of that same application fail, which needs trustee cleanup but has no cross-principal effect.",
+      "Supabase's default privileges and PostgreSQL's PUBLIC execute make every public function executable by anon. Only random_code is revoked. Explicitly revoking execute on is_admin, my_student_id, enrol_application, issue_access_code and the trigger functions from anon would shrink the surface, though each is currently safe."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fschema.sql%23public.submit_application::supabase%2Fschema.sql%23public.submit_application::supabase::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Unbounded%20buffering%20and%20cardinality",
+    "canonical_refs": {
+      "surface": "supabase/schema.sql#public.submit_application",
+      "boundary": "supabase/schema.sql#public.submit_application",
+      "subsystem": "supabase",
+      "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality"
+    },
+    "surface": "Anonymous submit_application RPC and trustee application list views",
+    "boundary": "Anonymous submissions cannot exhaust database quota or make trustee views unusable",
+    "subsystem": "Supabase database",
+    "attack_class": "Unbounded buffering and cardinality",
+    "starting_paths": [
+      "supabase/schema.sql",
+      "src/lib/application.ts",
+      "src/portal/api.ts",
+      "src/portal/admin/Applications.tsx",
+      "src/portal/admin/Overview.tsx",
+      ".github/workflows/keepalive.yml"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Pre-authentication work imbalance",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 2,
+    "status": "candidate",
+    "agent_id": "h7-submit-flood",
+    "reviewed_paths": [
+      ".github/workflows/keepalive.yml",
+      "src/lib/application.ts",
+      "src/portal/admin/Applications.tsx",
+      "src/portal/admin/Overview.tsx",
+      "src/portal/api.ts",
+      "supabase/schema.sql",
+      "supabase/tests/run_security_tests.py",
+      "supabase/tests/supabase_shim.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h7-submit-flood",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "supabase/tests/supabase_shim.sql",
+          "supabase/tests/run_security_tests.py"
+        ],
+        "invariant": "submit_application bounds the total persisted size of an anonymous submission, so a single anon RPC call cannot store an arbitrarily large row in public.applications",
+        "method": "local",
+        "result": "On local Postgres 16 loaded with the Supabase shim + target schema.sql, acting as role anon with no JWT: a submission whose p_answers was ~250 kB was correctly rejected ('invalid answers' from the pg_column_size(p_answers) > 200000 guard), but a submission with ONE file element whose 'path' matched the regex and which carried ~1.1 MB of arbitrary extra keys was ACCEPTED and returned reference JVJ-2026-N2K5Z. pg_column_size(files) of the stored row = 1120082 bytes; total row = 1120240 bytes. p_files has no byte cap (only jsonb_array_length <= 30 and a per-element path regex), so each anon call persists an attacker-sized row; with up to 30 elements a single call can persist tens of MB.",
+        "artifact": "agents/h7-submit-flood/artifacts/evidence-1.txt"
+      },
+      {
+        "agent_id": "h7-submit-flood",
+        "reviewed_paths": [
+          "src/portal/api.ts",
+          "src/portal/admin/Applications.tsx",
+          "src/portal/admin/Overview.tsx"
+        ],
+        "invariant": "Trustee application list/overview reads are bounded (paginated or limited) so accumulated application rows cannot make the trustee views unusable",
+        "method": "source",
+        "result": "loadApplications (api.ts:276) and loadOverview (api.ts:166) both call c.from('applications').select('*') with only .order() and no .limit()/.range()/pagination. Applications.tsx and Overview.tsx render over the full result set. Every application's complete answers and files jsonb (including the unbounded file-element padding above) is streamed to and buffered in the trustee browser on every portal load; no server-side or client-side cap exists.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h7-submit-flood",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/lib/application.ts",
+          ".github/workflows/keepalive.yml"
+        ],
+        "invariant": "Anonymous submission is rate/cardinality limited at the source layer so anon cannot insert unbounded numbers of application rows",
+        "method": "source",
+        "result": "grant execute on submit_application to anon (schema.sql:452); client calls it via sb.rpc (application.ts:188) but any anon-key holder can call PostgREST directly. The function loops to generate a unique reference but imposes no per-caller rate limit, no cooldown, and no cap on total rows in public.applications; the table has RLS but anon inserts occur through the SECURITY DEFINER function. keepalive.yml is only a twice-weekly read ping and imposes no limit. No source-visible rate or row-count control exists; any such limit would be a deployed Supabase edge/Auth config fact.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "supabase/schema.sql:submit_application:unbounded-p_files-size-and-application-row-cardinality"
+    ],
+    "unresolved": [],
+    "hunter_group": "h7-submit-flood",
+    "critic_reason": "The anonymous RPC submit_application (schema.sql:283-310, granted to anon at :453) inserts one applications row of up to 200 kB jsonb per call with no rate limit, dedup or captcha bound in source (the honeypot is client-side only, application.ts:154). The trustee portal then loads every row with select('*') and no limit or range (api.ts:166, :276) for Overview and Applications. The wave-1 units on submit_application checked access control and injection only, and the storage resource candidate covers bucket objects, not DB rows. No unit checks whether anon row accumulation exhausts DB quota on the free-tier project (keepalive.yml says free tier) or makes the trustee application views unusable and buries genuine applications.",
+    "hardening": [
+      "Add a pg_column_size(p_files) byte cap (and ideally a per-element size cap) in submit_application mirroring the existing 200 kB p_answers guard; file elements only need {field,label,name,path,mime,size}, so reject or strip unknown keys and bound mime/name/label lengths before insert.",
+      "Add server-side pagination/limits to the trustee application reads (src/portal/api.ts:166 and 276 use select('*') with no limit); select only columns needed for the list view rather than the full answers/files jsonb, and lazy-load a single application's detail on navigation.",
+      "Consider a lightweight anti-automation/rate control on anonymous submit_application (e.g. per-IP throttling at the edge or a proof-of-work/captcha gate) and a periodic cleanup/archival of stale 'new' applications to bound table cardinality; these are deployment-layer mitigations referenced here as hardening, not findings."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fschema.sql%23storage%20policy%20jvj%20applicants%20upload::supabase%2Fschema.sql%23storage.buckets%20applications::supabase%2Fstorage::ATTACK-CLASSES.md%23Resource%20and%20file%20handling",
+    "canonical_refs": {
+      "surface": "supabase/schema.sql#storage policy jvj applicants upload",
+      "boundary": "supabase/schema.sql#storage.buckets applications",
+      "subsystem": "supabase/storage",
+      "attack_class": "ATTACK-CLASSES.md#Resource and file handling"
+    },
+    "surface": "Anonymous storage upload to applications bucket",
+    "boundary": "Insert-only, incoming/ prefix, bucket size and MIME limits",
+    "subsystem": "Supabase storage",
+    "attack_class": "Resource and file handling",
+    "starting_paths": [
+      "supabase/schema.sql",
+      "src/lib/application.ts",
+      "src/lib/files.ts",
+      "src/portal/admin/StudentFile.tsx"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Resource and file handling",
+    "selected_companion_blocks": [
+      "CLIENT-SIDE.md#DOM-based XSS",
+      "CLIENT-SIDE.md#Core discipline",
+      "CLIENT-SIDE.md#Universal moves",
+      "CLIENT-SIDE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h2-storage",
+    "reviewed_paths": [
+      "src/lib/application.ts",
+      "src/lib/files.ts",
+      "src/portal/admin/StudentFile.tsx",
+      "supabase/schema.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h2-storage",
+        "reviewed_paths": [
+          "supabase/schema.sql"
+        ],
+        "invariant": "Anonymous storage insert cannot reach outside bucket 'applications' prefix 'incoming/' or the 'files' bucket (path traversal / cross-bucket write).",
+        "method": "source",
+        "result": "Policy 'jvj applicants upload' (schema.sql:476-477) pins bucket_id='applications' and (storage.foldername(name))[1]='incoming'. Object keys are bucket-scoped storage keys, not filesystem paths, so '../' segments cannot change bucket_id; anon has no SELECT/UPDATE/DELETE policy on storage.objects. Local shim test (evidence-1 T5) shows insert outside incoming/ rejected by RLS.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h2-storage",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/lib/application.ts"
+        ],
+        "invariant": "An applicant cannot overwrite or race-replace another applicant's uploaded object (TOCTOU / upsert).",
+        "method": "source",
+        "result": "Client uploads with upsert:false into a crypto.randomUUID() folder (application.ts:174-182). No UPDATE or DELETE policy exists for anon/authenticated on the applications bucket (schema.sql:476-501), so Storage upsert/overwrite is refused; folder names are unguessable 122-bit UUIDs.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h2-storage",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/lib/application.ts"
+        ],
+        "invariant": "Paths claimed in submit_application p_files are bound to objects the submitter uploaded, so enrolment cannot grant a student read access to another applicant's object.",
+        "method": "source",
+        "result": "submit_application only regex-checks '^incoming/[0-9a-f-]{36}/[^/]+$' (schema.sql:298) and does not bind the path to an object the caller uploaded; enrol_application copies it into documents (schema.sql:382-385), which 'jvj students read own application files' (schema.sql:497-501) then honors. Exploitation requires knowing another applicant's random UUID folder, which is only stored in applications.files (admin-only RLS, schema.sql:422) and is never returned to anon (RPC returns only the reference). No source-visible path leaks it, so no lower-trust principal can complete the chain; recorded as hardening.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h2-storage",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/lib/files.ts",
+          "src/portal/admin/StudentFile.tsx"
+        ],
+        "invariant": "Bucket MIME/size limits constrain what an anonymous uploader can place in front of a trustee.",
+        "method": "source",
+        "result": "allowed_mime_types {image/*, application/pdf} and 10 MiB limit (schema.sql:463-467) are enforced against the client-declared Content-Type, not the content; client acceptsFile/fileTooLarge (files.ts:37-43) are client-only. 'image/*' admits image/svg+xml. Trustee opens objects via a 30-minute signed URL on the Supabase storage origin in a new tab (StudentFile.tsx:307-313), not on the portal origin, so any active content runs on the storage API origin, which holds no portal session (session is in portal-origin localStorage). The openFile/DOM-XSS rendering path is peer-owned (src/portal/admin/StudentFile.tsx#openFile CLIENT-SIDE DOM-based XSS unit); recorded as hardening only.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h2-storage",
+    "hardening": [
+      "submit_application (supabase/schema.sql:297-299) accepts any 'incoming/<uuid>/<name>' path without checking that the caller uploaded it or that it exists. enrol_application (schema.sql:374-386) then grants the enrolled student read access to it via 'jvj students read own application files' (schema.sql:497-501). Not exploitable today because other applicants' random folder UUIDs are never exposed to non-admins. Fix: issue the folder server-side, or have submit_application check that storage.objects rows exist and that each path's folder is unique to one application.",
+      "Bucket allowed_mime_types 'image/*' (schema.sql:464) admits image/svg+xml, and MIME limits trust the client-declared Content-Type. Trustees open applicant files via signed URLs in a new tab (src/portal/admin/StudentFile.tsx:307-313), on the Supabase storage origin, not the portal origin. List explicit raster types (image/jpeg, image/png, image/webp, image/heic) and serve with Content-Disposition: attachment (createSignedUrl download option). The rendering path itself belongs to the peer openFile DOM-XSS unit.",
+      "Signed URLs live for 30 minutes (src/portal/api.ts:265) and stay valid after a document is deleted or a student login is removed. A shorter TTL (for example 60-300 s) narrows the window. The module-level urlCache (src/portal/ui.tsx:202-219) never expires entries, so avatars break after 30 minutes in a long-lived tab (functional, not a disclosure).",
+      "Authenticated students can upload unlimited 15 MiB objects into files/students/<own id>/ without creating a documents row (schema.sql:491-494). This is limited to a small semi-trusted population and trustees can delete them (schema.sql:482-484), but a per-student cap or orphan sweep would bound it."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fschema.sql%23storage%20policy%20jvj%20applicants%20upload::supabase%2Fschema.sql%23storage.buckets%20applications::supabase%2Fstorage::RESOURCE-EXHAUSTION-AND-AVAILABILITY.md%23Unbounded%20buffering%20and%20cardinality",
+    "canonical_refs": {
+      "surface": "supabase/schema.sql#storage policy jvj applicants upload",
+      "boundary": "supabase/schema.sql#storage.buckets applications",
+      "subsystem": "supabase/storage",
+      "attack_class": "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality"
+    },
+    "surface": "Anonymous storage upload to applications bucket",
+    "boundary": "Insert-only, incoming/ prefix, bucket size and MIME limits",
+    "subsystem": "Supabase storage",
+    "attack_class": "Unbounded buffering and cardinality",
+    "starting_paths": [
+      "supabase/schema.sql",
+      "src/lib/application.ts"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Unbounded buffering and cardinality",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Pre-authentication work imbalance",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "h2-storage",
+    "reviewed_paths": [
+      "src/lib/application.ts",
+      "supabase/schema.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h2-storage",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "src/lib/application.ts"
+        ],
+        "invariant": "Anonymous uploads to the applications bucket are bounded in aggregate (count/bytes per submission or overall) and orphaned uploads not referenced by any application are cleaned up or removable by trustees.",
+        "method": "local",
+        "result": "In a local Postgres 16 fixture (repo shim + schema.sql), role anon inserted 500 objects at arbitrary depth (incoming/junk/<n>/a/b/c.bin) plus a flat incoming/x.svg with no application submitted; all 501 accepted, none referenced by any applications.files entry, anon cannot read/delete them, and an admin user's DELETE on applications-bucket objects affected 0 rows because no DELETE/ALL policy covers that bucket (only 'jvj admins manage files' for bucket 'files'). Only per-object 10 MiB and MIME limits exist in source; no aggregate count/byte bound, binding to a submission, or expiry/cleanup is source-visible.",
+        "artifact": "agents/h2-storage/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [
+      "supabase/schema.sql:storage-policy:jvj-applicants-upload:unbound-anonymous-orphan-uploads"
+    ],
+    "unresolved": [],
+    "hunter_group": "h2-storage",
+    "hardening": [
+      "submit_application (supabase/schema.sql:297-299) accepts any 'incoming/<uuid>/<name>' path without checking that the caller uploaded it or that it exists. enrol_application (schema.sql:374-386) then grants the enrolled student read access to it via 'jvj students read own application files' (schema.sql:497-501). Not exploitable today because other applicants' random folder UUIDs are never exposed to non-admins. Fix: issue the folder server-side, or have submit_application check that storage.objects rows exist and that each path's folder is unique to one application.",
+      "Bucket allowed_mime_types 'image/*' (schema.sql:464) admits image/svg+xml, and MIME limits trust the client-declared Content-Type. Trustees open applicant files via signed URLs in a new tab (src/portal/admin/StudentFile.tsx:307-313), on the Supabase storage origin, not the portal origin. List explicit raster types (image/jpeg, image/png, image/webp, image/heic) and serve with Content-Disposition: attachment (createSignedUrl download option). The rendering path itself belongs to the peer openFile DOM-XSS unit.",
+      "Signed URLs live for 30 minutes (src/portal/api.ts:265) and stay valid after a document is deleted or a student login is removed. A shorter TTL (for example 60-300 s) narrows the window. The module-level urlCache (src/portal/ui.tsx:202-219) never expires entries, so avatars break after 30 minutes in a long-lived tab (functional, not a disclosure).",
+      "Authenticated students can upload unlimited 15 MiB objects into files/students/<own id>/ without creating a documents row (schema.sql:491-494). This is limited to a small semi-trusted population and trustees can delete them (schema.sql:482-484), but a per-student cap or orphan sweep would bound it."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fschema.sql%23storage%20policy%20jvj%20students%20read%20own::public.my_student_id::supabase%2Fstorage::DATA-ISOLATION-AND-LIFECYCLE.md%23Blob%20and%20signed-reference%20overreach",
+    "canonical_refs": {
+      "surface": "supabase/schema.sql#storage policy jvj students read own",
+      "boundary": "public.my_student_id",
+      "subsystem": "supabase/storage",
+      "attack_class": "DATA-ISOLATION-AND-LIFECYCLE.md#Blob and signed-reference overreach"
+    },
+    "surface": "Authenticated storage reads and writes in files bucket",
+    "boundary": "Student may read/write only students/<own id>/ and own application files",
+    "subsystem": "Supabase storage",
+    "attack_class": "Blob and signed-reference overreach",
+    "starting_paths": [
+      "supabase/schema.sql",
+      "src/portal/api.ts"
+    ],
+    "ordinary_attack_class_block": null,
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Blob and signed-reference overreach",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "covered",
+    "agent_id": "h2-storage",
+    "reviewed_paths": [
+      "src/portal/api.ts",
+      "src/portal/ui.tsx",
+      "supabase/schema.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h2-storage",
+        "reviewed_paths": [
+          "supabase/schema.sql"
+        ],
+        "invariant": "A student can read/write storage objects only under files/students/<own id>/ and only applications-bucket objects linked to their own documents rows.",
+        "method": "source",
+        "result": "'jvj students read own' and 'jvj students upload own' (schema.sql:486-494) compare foldername[1]='students' and foldername[2]=my_student_id()::text; my_student_id() is NULL for admins/strangers so the predicate fails closed. 'jvj students read own application files' (schema.sql:497-501) requires a documents row with bucket='applications', exact path=name and student_id=my_student_id(); students cannot create such rows because 'student uploads own' (schema.sql:443-450) forces bucket='files' and path prefix students/<own id>/, and there is no student UPDATE policy on documents. No student UPDATE/DELETE policy on storage.objects. Consistent with repo security tests lines 100-106.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h2-storage",
+        "reviewed_paths": [
+          "src/portal/api.ts",
+          "src/portal/ui.tsx",
+          "supabase/schema.sql"
+        ],
+        "invariant": "Signed URLs are minted only for objects the caller may read and are short-lived.",
+        "method": "source",
+        "result": "fileUrl calls storage.createSignedUrl(path, 1800) under the caller's own JWT (api.ts:264-265), so Storage applies the SELECT policies above at mint time; expiry is 30 minutes. A URL minted before revocation (profile deletion, document deletion) stays valid until expiry, bounded at 30 minutes; the module-level urlCache in ui.tsx:202-219 is keyed only by bucket/path and is per-tab, and a later account in the same tab only requests paths visible in its own RLS-filtered rows, so no cross-account disclosure path. Recorded as hardening.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h2-storage",
+        "reviewed_paths": [
+          "src/portal/api.ts",
+          "supabase/schema.sql"
+        ],
+        "invariant": "Student-supplied studentId in uploadTo/uploadDocument cannot place objects or documents rows in another student's file.",
+        "method": "source",
+        "result": "Client builds path students/${studentId}/... (api.ts:94-99, 244-255) from a client value, but server-side storage insert policy and documents insert policy both bind to my_student_id(), so a forged studentId is rejected by RLS.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [],
+    "unresolved": [],
+    "hunter_group": "h2-storage",
+    "hardening": [
+      "submit_application (supabase/schema.sql:297-299) accepts any 'incoming/<uuid>/<name>' path without checking that the caller uploaded it or that it exists. enrol_application (schema.sql:374-386) then grants the enrolled student read access to it via 'jvj students read own application files' (schema.sql:497-501). Not exploitable today because other applicants' random folder UUIDs are never exposed to non-admins. Fix: issue the folder server-side, or have submit_application check that storage.objects rows exist and that each path's folder is unique to one application.",
+      "Bucket allowed_mime_types 'image/*' (schema.sql:464) admits image/svg+xml, and MIME limits trust the client-declared Content-Type. Trustees open applicant files via signed URLs in a new tab (src/portal/admin/StudentFile.tsx:307-313), on the Supabase storage origin, not the portal origin. List explicit raster types (image/jpeg, image/png, image/webp, image/heic) and serve with Content-Disposition: attachment (createSignedUrl download option). The rendering path itself belongs to the peer openFile DOM-XSS unit.",
+      "Signed URLs live for 30 minutes (src/portal/api.ts:265) and stay valid after a document is deleted or a student login is removed. A shorter TTL (for example 60-300 s) narrows the window. The module-level urlCache (src/portal/ui.tsx:202-219) never expires entries, so avatars break after 30 minutes in a long-lived tab (functional, not a disclosure).",
+      "Authenticated students can upload unlimited 15 MiB objects into files/students/<own id>/ without creating a documents row (schema.sql:491-494). This is limited to a small semi-trusted population and trustees can delete them (schema.sql:482-484), but a per-student cap or orphan sweep would bound it."
+    ]
+  },
+  {
+    "coverage_id": "supabase%2Fsetup.mjs%23main::supabase%2Fsetup.mjs%23api::supabase::ATTACK-CLASSES.md%23Wildcard",
+    "canonical_refs": {
+      "surface": "supabase/setup.mjs#main",
+      "boundary": "supabase/setup.mjs#api",
+      "subsystem": "supabase",
+      "attack_class": "ATTACK-CLASSES.md#Wildcard"
+    },
+    "surface": "Operator setup CLI with Management API token",
+    "boundary": "Privileged token used only against intended project; no unsafe changes",
+    "subsystem": "Operator tooling",
+    "attack_class": "Wildcard",
+    "starting_paths": [
+      "supabase/setup.mjs",
+      "supabase/SETUP.md",
+      "supabase/schema.sql"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Wildcard",
+    "selected_companion_blocks": [
+      "CLOUD-AND-DEPLOYMENT.md#Security-control precedence drift",
+      "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+      "CLOUD-AND-DEPLOYMENT.md#Universal moves",
+      "CLOUD-AND-DEPLOYMENT.md#Validation rules"
+    ],
+    "excluded_blocks": [
+      {
+        "block": "MEMORY-SAFETY-AND-BINARY.md#Core discipline",
+        "reason": "no native or unsafe-memory code in the target"
+      },
+      {
+        "block": "AI-AND-LLM.md#Core discipline",
+        "reason": "no model, prompt or tool-calling component"
+      },
+      {
+        "block": "PROTOCOLS-RPC-AND-MESSAGING.md#Core discipline",
+        "reason": "no queues, brokers or custom RPC protocols; PostgREST functions are covered by access-control units"
+      },
+      {
+        "block": "DESKTOP-MOBILE-AND-LOCAL-IPC.md#Core discipline",
+        "reason": "web-only target with no native app or local IPC"
+      }
+    ],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "h6-supply",
+    "reviewed_paths": [
+      "supabase/SETUP.md",
+      "supabase/schema.sql",
+      "supabase/setup.mjs",
+      "supabase/tests/run_security_tests.py",
+      "supabase/tests/supabase_shim.sql"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "h6-supply",
+        "reviewed_paths": [
+          "supabase/setup.mjs",
+          "supabase/SETUP.md"
+        ],
+        "invariant": "The Management API token is used only against the operator-chosen project, SQL built from CLI input is escaped, and setup does not disable a control the schema relies on",
+        "method": "source",
+        "result": "Token goes only to API base (overridable by operator env SUPABASE_API_BASE \u2014 operator-trusted, hardening). Admin emails are regex-validated and single-quote-escaped (setup.mjs:97,173). --import runs arbitrary operator SQL by design. Project safety check refuses foreign tables/triggers unless 'use anyway'. However step 7 PATCHes config/auth with mailer_autoconfirm:true (setup.mjs:190-194) and SETUP.md:43 instructs the same, removing email-ownership proof that the admin_emails claim in handle_new_user depends on.",
+        "artifact": null
+      },
+      {
+        "agent_id": "h6-supply",
+        "reviewed_paths": [
+          "supabase/schema.sql",
+          "supabase/tests/supabase_shim.sql",
+          "supabase/tests/run_security_tests.py"
+        ],
+        "invariant": "An admin profile is only granted to the person who controls the allow-listed trustee mailbox",
+        "method": "local",
+        "result": "In sandboxed Postgres 16 with the repo shim and schema.sql, after inserting an unclaimed admin_emails row, an auth.users insert for that address with an empty access_code (what GoTrue does on signUp when autoconfirm is on) produced profiles.role='admin', is_admin()=true for that uid, marked the row claimed, and a later sign-up by the real trustee raised JVJ_SIGNUP_NOT_ALLOWED. handle_new_user consults no confirmation state.",
+        "artifact": "agents/h6-supply/artifacts/evidence-1.txt"
+      }
+    ],
+    "result_fingerprints": [
+      "supabase/schema.sql:handle_new_user:admin-email-claim-without-ownership-proof"
+    ],
+    "unresolved": [],
+    "hunter_group": "h6-supply",
+    "hardening": [
+      "deploy.yml grants pages:write and id-token:write at workflow level, so the build job (which runs npm ci and the build toolchain) also holds them; scope these permissions to the deploy job only.",
+      "GitHub Actions are referenced by floating major tags (actions/checkout@v4, setup-node@v4, upload-pages-artifact@v3, deploy-pages@v4); pin to full commit SHAs.",
+      ".gitignore does not cover .env, .env.*.local or the PII-bearing operator files named in supabase/SETUP.md (import-existing-students.sql, supabase-admins.sql); add them so an operator running setup.mjs from the repo copy cannot commit student data.",
+      "supabase/setup.mjs honors SUPABASE_API_BASE from the environment, sending the Management API token to any host; restrict to https://api.supabase.com or warn loudly when overridden.",
+      "supabase/setup.mjs prints the new project's database password to stdout (line 218); terminal scrollback/logging retains it.",
+      "vercel.json sets X-Frame-Options/nosniff/Referrer-Policy but GitHub Pages (the URL configured as Supabase site_url) cannot set response headers, and neither host sets a Content-Security-Policy; the portal on GitHub Pages is frameable.",
+      "Runtime background videos default to a third-party CloudFront host (src/content.ts:12-17, .env.example) whose content can change without review; ASSESSMENT.md already flags self-hosting.",
+      "Snapshot has no .git directory, so git history for committed-then-removed secrets could not be reviewed."
+    ],
+    "merge_note": "h6 proposed the same root cause as h1 under a different fingerprint; consolidated by root cause into the canonical h1 fingerprint and verified once (v1-admin-claim)."
+  }
+]

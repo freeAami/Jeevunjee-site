@@ -1,0 +1,47 @@
+{
+  "run_id": "jeevunjee-site-run-1",
+  "repo": "freeAami/Jeevunjee-site",
+  "target": "/home/claude/audit-target",
+  "source_ref": "3f4d1a42f6abe392240af63bec4c4a5bcd5ce48b (clean export of HEAD via git archive; node_modules copied read-only for local builds)",
+  "profile": "standard",
+  "scope_paths": [
+    "."
+  ],
+  "budget": 34,
+  "budget_plan": "0 reconnaissance agents (parent-performed, see deviations) + 6 wave-1 hunters + 1 post-wave critic + 1 final-clean critic reserved + 18 verifier invocations reserved (Phase 3 + Phase 5)",
+  "execution_policy": "sandboxed-source-and-local-only",
+  "sandbox": "/home/claude/audit-tools/sbx: unshare mount+net+pid namespaces (loopback only), target/tools/browsers bind-mounted read-only, private tmpfs /tmp /var/tmp /dev/shm, env -i allowlist (PATH, HOME=<scratch>/home, TMPDIR, LANG, PLAYWRIGHT_BROWSERS_PATH), uid/gid 65534, no_new_privs, prlimit cpu=300s data=3GiB fsize=200MB nproc=256 nofile=1024, timeout 600s. Self-tested: network blocked, target/host/output-root not writable, scratch writable, loopback up.",
+  "promotion": "/home/claude/audit-tools/promote.py (descriptor-relative no-follow walk, regular single-link files, per-file and cumulative byte limits, exclusive no-follow destination create). Self-tested against symlink, hardlink, FIFO, oversize, traversal, absolute and overwrite cases.",
+  "companions_selected": [
+    "WEB-PROTOCOL-AND-AUTH.md",
+    "CLIENT-SIDE.md",
+    "DATA-ISOLATION-AND-LIFECYCLE.md",
+    "SUPPLY-CHAIN-AND-RELEASE.md",
+    "CLOUD-AND-DEPLOYMENT.md",
+    "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md"
+  ],
+  "companions_excluded": {
+    "MEMORY-SAFETY-AND-BINARY.md": "no native, binary or unsafe-memory code in the target",
+    "AI-AND-LLM.md": "no model, prompt or tool-calling component",
+    "PROTOCOLS-RPC-AND-MESSAGING.md": "no gRPC/GraphQL/queues; the only RPCs are Supabase PostgREST functions, covered by access-control units",
+    "DESKTOP-MOBILE-AND-LOCAL-IPC.md": "web-only target; no native app, deep links or local IPC"
+  },
+  "prior_runs": [],
+  "shared_file_owners": {
+    "run-metadata.json": "parent",
+    "architecture.md": "parent",
+    "coverage-ledger.json": "parent",
+    "findings.json": "parent",
+    "REPORT.md": "parent",
+    "FINDINGS-DETAIL.md": "parent",
+    "NEEDS-VALIDATION.md": "parent"
+  },
+  "deviations": [
+    "Phase 1 reconnaissance was performed by the parent directly from source (the parent authored the code in this session) instead of four research agents; hunters, critics and verifiers are independent fresh agents.",
+    "Output directory is /home/claude/security-audit-skill/... rather than ~ (/root) so the unprivileged sandbox user can traverse to its scratch directory; it is outside the target.",
+    "Phase 3 candidate verifiers (5, one per unique fingerprint after merging h6's duplicate of h1's root cause) were launched concurrently with the post-wave coverage critic instead of strictly after the clean critic pass, to save wall-clock time; any candidate from later waves gets its own fresh verifier.",
+    "Budget raised from 26 to 34 after the wave-2 critic proposed two more units: 26 could not reserve a third wave, its critics and Phase 5 verification for every record. The user asked for an end-to-end audit with no gaps, so coverage was preferred over an early stop."
+  ],
+  "run_status": "complete",
+  "agents_used": 32
+}

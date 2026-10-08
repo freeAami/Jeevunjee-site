@@ -1,5 +1,7 @@
 # Jeevunjee Family Scholarship — site
 
+> **Picking this up?** Start with [HANDOFF.md](HANDOFF.md) — where the project came from, what exists, what is unfinished and how to continue.
+
 React 19 + Vite + TypeScript site for the Jeevunjee Family Scholarship, with a trustee & student portal.
 
 - **Public site + application journey**: `/` — applicants answer the Trust's application form one screen at a time.
