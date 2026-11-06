@@ -9,12 +9,24 @@ export function CursorGlow() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     let tx = window.innerWidth / 2, ty = window.innerHeight / 2;
     let x = tx, y = ty, raf = 0;
-    const onMove = (e: PointerEvent) => { tx = e.clientX; ty = e.clientY; };
     const tick = () => {
       x += (tx - x) * 0.08;
       y += (ty - y) * 0.08;
       if (ref.current) ref.current.style.transform = `translate(${x - 260}px, ${y - 260}px)`;
-      raf = requestAnimationFrame(tick);
+      // Stop once the glow has caught up, so an idle page isn't redrawn 60 times a second.
+      raf = Math.abs(tx - x) + Math.abs(ty - y) > 0.5 ? requestAnimationFrame(tick) : 0;
+    };
+    const onMove = (e: PointerEvent) => {
+      tx = e.clientX;
+      ty = e.clientY;
+      if (!raf) raf = requestAnimationFrame(tick);
+      // Cards light up under the pointer: the card's own --mx/--my drive its ::before spotlight.
+      const card = (e.target as Element | null)?.closest?.('.depth-card') as HTMLElement | null;
+      if (card) {
+        const r = card.getBoundingClientRect();
+        card.style.setProperty('--mx', `${e.clientX - r.left}px`);
+        card.style.setProperty('--my', `${e.clientY - r.top}px`);
+      }
     };
     window.addEventListener('pointermove', onMove, { passive: true });
     tick();

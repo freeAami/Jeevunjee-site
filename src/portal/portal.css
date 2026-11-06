@@ -291,3 +291,6 @@
   .ptable.pstack td.pactions { display: flex; gap: 8px; padding-top: 8px; }
 }
 @media (max-width: 640px) { .ptable.pstack td[data-label] > * { justify-self: start; } }
+
+/* Press feedback on portal buttons (Nov 2026). */
+.pbtn:active:not(:disabled) { transform: scale(0.97); transition-duration: 100ms; }

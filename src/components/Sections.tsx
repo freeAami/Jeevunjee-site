@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { APPLY_VIDEO, CONTACT_EMAIL, family, pillars, steps } from '../content';
 import { useReveal } from '../hooks/useReveal';
+import { HoverWords } from './HoverWords';
 
 export function Mission() {
   const rule = useReveal<HTMLSpanElement>();
@@ -11,8 +12,7 @@ export function Mission() {
       <div className="reveal" ref={body}>
         <div className="eyebrow" id="belief-h">01 · Our belief</div>
         <p>
-          A family with the means to help someone else have a chance — not a charity soliciting pity, not a corporate
-          foundation. <em>Opportunity, dignity, family, potential.</em>
+          <HoverWords text="A family with the means to help someone else have a chance." />
         </p>
       </div>
     </section>
@@ -29,10 +29,10 @@ export function HowItWorks() {
         <div className="how-grid">
           <div className="reveal" ref={head}>
             <div className="eyebrow">02 · How it works</div>
-            <h2 className="section-title" id="how-h">A simple, private process.</h2>
+            <h2 className="section-title" id="how-h"><HoverWords text="A simple, private process." /></h2>
             <p className="intro">
               Every application is read by the Scholarship Committee. Documents are kept in a private folder only the
-              Committee can open — never passed around by email.
+              Committee can open.
             </p>
           </div>
           <div className="steps reveal stagger" ref={list}>
@@ -77,7 +77,7 @@ export function WhoWeSupport() {
       <div className="reveal" ref={head}>
         <div className="eyebrow">03 · Who we support</div>
         <h2 className="section-title" id="who-h">
-          Applicants with ability and determination — and without the means to see it through.
+          <HoverWords text="Applicants with ability and determination, without the means to see it through." />
         </h2>
       </div>
       <div className="pillars reveal stagger" ref={grid}>
@@ -121,11 +121,10 @@ export function Family() {
           <div className="eyebrow">04 · Our family</div>
           <div className="family-head">
             <h2 className="section-title" id="family-h">
-              The Jeevunjee family started this because someone once did the same for us.
+              <HoverWords text="The Jeevunjee family started this because someone once did the same for us." />
             </h2>
             <p>
-              Reviewed by the Scholarship Committee — currently Altaf and Imran Jeevunjee. The brand is Jeevunjee. The people
-              behind it are stewards, not figureheads.
+              Reviewed by the Scholarship Committee.
             </p>
           </div>
         </div>
@@ -187,7 +186,7 @@ export function ApplyBand({ onApply }: { onApply: () => void }) {
       <div className="apply-veil" />
       <div className="reveal" ref={body}>
         <div className="eyebrow">05 · Apply for support</div>
-        <h2 className="section-title" id="apply-h">Tell us who you are, and what you're trying to reach.</h2>
+        <h2 className="section-title" id="apply-h"><HoverWords text="Tell us who you are, and what you're trying to reach." /></h2>
         <p>
           Not a form — a conversation, one question at a time. About fifteen minutes. You'll get a reference number the
           moment you finish.
