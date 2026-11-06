@@ -377,7 +377,9 @@ export function Journey({ onClose }: { onClose: () => void }) {
         break;
       case 8:
         prompt = 'What does it cost, and what do you need?';
-        sub = 'Estimates are fine. Please give everything in rupees. If part of the fee is in pounds or another currency, convert it at today’s rate.';
+        sub = draft?.hadForeign
+          ? 'This form now takes rupees only, so the amounts you saved in another currency were removed. Please add them here in rupees, converted at today’s rate.'
+          : 'Estimates are fine. Please give everything in rupees. If part of the fee is in pounds or another currency, convert it at today’s rate.';
         control = (
           <>
             <div className="money-grid">

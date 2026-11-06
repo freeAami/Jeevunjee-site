@@ -326,7 +326,8 @@ function ProofModal({ data, instalment, payment, onClose, onChanged }: {
   const [busy, setBusy] = useState<DocCategory | null>(null);
   const docs = proofDocs(data, { instalment, payment });
   const title = instalment ? instalment.label : `Payment on ${fmtDate(payment?.paid_on)}`;
-  const link: DocLink = instalment ? { instalment_id: instalment.id } : { payment_id: payment?.id ?? null };
+  // Proof added from a payment follows that payment if it is later moved to another instalment.
+  const link: DocLink = payment ? { payment_id: payment.id } : { instalment_id: instalment?.id ?? null };
   const steps = [...PROOF_STEPS, { value: 'other' as DocCategory, label: 'Anything else', hint: 'e.g. a bank slip or a letter from the institution' }];
   const paidFor = data.payments.filter((p) => (instalment ? p.instalment_id === instalment.id : p.id === payment?.id));
 
