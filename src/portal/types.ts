@@ -96,10 +96,11 @@ export type Payment = {
 };
 
 export type DocCategory =
-  | 'photo' | 'identity' | 'certificate' | 'results' | 'invoice' | 'receipt' | 'fee_schedule' | 'application' | 'income' | 'other';
+  | 'photo' | 'identity' | 'certificate' | 'results' | 'invoice' | 'cheque' | 'receipt' | 'fee_schedule' | 'application' | 'income' | 'other';
 
 export const DOC_CATEGORIES: { value: DocCategory; label: string }[] = [
   { value: 'invoice', label: 'Invoice / fee demand' },
+  { value: 'cheque', label: 'Cheque / money from the trust' },
   { value: 'receipt', label: 'Payment receipt' },
   { value: 'results', label: 'Semester / exam results' },
   { value: 'certificate', label: 'Certificate' },
@@ -112,7 +113,17 @@ export const DOC_CATEGORIES: { value: DocCategory; label: string }[] = [
 ];
 
 /** What a student may upload to their own file (matches the database rule). */
-export const STUDENT_UPLOAD_CATEGORIES: DocCategory[] = ['invoice', 'results', 'receipt', 'certificate', 'other'];
+export const STUDENT_UPLOAD_CATEGORIES: DocCategory[] = ['invoice', 'cheque', 'results', 'receipt', 'certificate', 'other'];
+
+/** The steps of one payment, in the order they happen. Each step gets its own photo. */
+export const PROOF_STEPS: { value: DocCategory; label: string; hint: string }[] = [
+  { value: 'invoice', label: 'Invoice from the institution', hint: 'The fee demand that says what is owed' },
+  { value: 'cheque', label: 'Cheque or money from the trust', hint: 'A photo of the cheque, or the transfer slip' },
+  { value: 'receipt', label: 'Receipt from the institution', hint: 'Proof the fee was paid' },
+];
+
+/** Where a document sits in the payment schedule, if anywhere. */
+export type DocLink = { instalment_id?: string | null; payment_id?: string | null };
 
 export type DocumentRec = {
   id: string;
@@ -124,6 +135,8 @@ export type DocumentRec = {
   mime: string | null;
   size_bytes: number | null;
   uploaded_by_role: 'admin' | 'student' | 'applicant';
+  instalment_id?: string | null;
+  payment_id?: string | null;
   created_at: string;
 };
 

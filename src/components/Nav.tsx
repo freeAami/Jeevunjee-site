@@ -15,7 +15,7 @@ export function Nav({ onApply }: { onApply: () => void }) {
     <nav className="nav" aria-label="Main">
       <div className={`liquid-glass nav-pill${scrolled ? ' scrolled' : ''}`}>
         <a href="#top" className="logo fade-rise" aria-label="Jeevunjee — back to top">
-          Jeevunjee<sup>SL</sup>
+          Jeevunjee
         </a>
         <div className="nav-links fade-rise-d1">
           {navItems.map((item) => (

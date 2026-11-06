@@ -1,0 +1,5 @@
+# Everyone, including AI crawlers, may read the public pages. The portal holds no public content.
+User-agent: *
+Allow: /
+
+Sitemap: https://jeevunjee.com/sitemap.xml

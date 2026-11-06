@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { finalName, safeFileName, shrinkImage, shrinkPhoto } from '../lib/files';
 import { getSupabase } from '../lib/supabase';
 import type {
-  Application, Course, DocCategory, DocumentRec, Instalment, Note, Overview, Payment, Profile, Student, StudentBundle,
+  Application, Course, DocCategory, DocLink, DocumentRec, Instalment, Note, Overview, Payment, Profile, Student, StudentBundle,
   Trust,
 } from './types';
 
@@ -31,7 +31,9 @@ export interface PortalApi {
   deleteInstalment(id: string): Promise<void>;
   savePayment(p: New<Payment>, settleInstalment: boolean): Promise<void>;
   deletePayment(id: string): Promise<void>;
-  uploadDocument(studentId: string, file: File, category: DocCategory, title: string, asRole: 'admin' | 'student'): Promise<void>;
+  uploadDocument(studentId: string, file: File, category: DocCategory, title: string, asRole: 'admin' | 'student', link?: DocLink): Promise<void>;
+  /** One-off: fold old foreign-currency amounts into rupees. Rates are rupees per 1 unit. Returns rows changed. */
+  convertToRupees(rates: Record<string, number>): Promise<number>;
   deleteDocument(doc: DocumentRec): Promise<void>;
   fileUrl(bucket: string, path: string): Promise<string>;
   addNote(studentId: string, body: string, authorName: string): Promise<void>;
@@ -58,6 +60,7 @@ export function friendlyError(e: unknown): string {
   if (/Email not confirmed/i.test(msg)) return 'This account still needs its email confirmed. Ask the site administrator to turn off email confirmation in Supabase (see the setup guide).';
   if (/rate limit/i.test(msg)) return 'Too many attempts — please wait a minute and try again.';
   if (/Failed to fetch|NetworkError|network/i.test(msg)) return 'Couldn’t reach the server. Check your internet connection and try again.';
+  if (/JVJ_LINK_MISMATCH/i.test(msg)) return 'That document can only be attached to this student’s own payments.';
   if (/row-level security|permission denied|not allowed/i.test(msg)) return 'You don’t have permission to do that.';
   return msg;
 }
@@ -246,19 +249,23 @@ export function createLiveApi(): PortalApi {
 
     deletePayment: (id) => withSb(async (c) => void check(await c.from('payments').delete().eq('id', id))),
 
-    uploadDocument: (studentId, file, category, title, asRole) =>
+    uploadDocument: (studentId, file, category, title, asRole, link) =>
       withSb(async (c) => {
         const up = await uploadTo(c, studentId, file);
         const { data: u } = await c.auth.getUser();
         const res = await c.from('documents').insert({
           student_id: studentId, bucket: 'files', path: up.path, category, title: title.trim() || up.name,
           mime: up.mime, size_bytes: up.size, uploaded_by: u.user?.id, uploaded_by_role: asRole,
+          instalment_id: link?.instalment_id ?? null, payment_id: link?.payment_id ?? null,
         });
         if (res.error) {
           await c.storage.from('files').remove([up.path]);
           throw new Error(res.error.message);
         }
       }),
+
+    convertToRupees: (rates) =>
+      withSb(async (c) => check(await c.rpc('convert_to_rupees', { p_rates: rates })) as number),
 
     deleteDocument: (doc) =>
       withSb(async (c) => {

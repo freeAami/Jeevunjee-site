@@ -3,10 +3,10 @@ import { ACCEPT_ATTR, ACCEPT_IMAGES, acceptsFile, fileTooLarge } from '../../lib
 import { friendlyError } from '../api';
 import { dueState, fmtAmount, fmtBytes, fmtDate, fmtLkr, fmtMixed, relativeDue, sumMixed } from '../format';
 import {
-  DOC_CATEGORIES, STUDENT_UPLOAD_CATEGORIES, type Course, type DocCategory, type DocumentRec, type Instalment, type Payment,
-  type StudentBundle,
+  DOC_CATEGORIES, PROOF_STEPS, STUDENT_UPLOAD_CATEGORIES, type Course, type DocCategory, type DocLink, type DocumentRec,
+  type Instalment, type Payment, type StudentBundle,
 } from '../types';
-import { Avatar, Badge, Button, Card, Empty, ErrorBox, Loading, useAsync, usePortal } from '../ui';
+import { Avatar, Badge, Button, Card, Empty, ErrorBox, Loading, Modal, useAsync, usePortal } from '../ui';
 import { CourseForm, InstalmentForm, PaymentForm, StudentForm } from './forms';
 
 type Tab = 'payments' | 'details' | 'documents' | 'notes' | 'login';
@@ -130,12 +130,12 @@ function Summary({ data }: { data: StudentBundle }) {
   }, [data]);
   return (
     <div className="pstats compact">
-      <div className="pstat"><span className="label">Course fees</span><span className="value small">{fmtMixed(v.fees)}</span></div>
+      <div className="pstat"><span className="label">Total course fees</span><span className="value small">{fmtMixed(v.fees)}</span></div>
       <div className="pstat"><span className="label">Paid by the trust</span><span className="value small">{fmtLkr(v.trustPaid)}</span></div>
       <div className="pstat"><span className="label">Still to pay</span><span className="value small">{fmtMixed(v.remaining)}</span></div>
       <div className={`pstat${v.next && dueState(v.next) === 'overdue' ? ' alert' : ''}`}>
         <span className="label">Next due</span>
-        <span className="value small">{v.next ? fmtAmount(v.next.amount_lkr, v.next.amount_foreign, v.next.foreign_currency) : '—'}</span>
+        <span className="value small">{v.next ? rs(v.next.amount_lkr, v.next.amount_foreign, v.next.foreign_currency) : '—'}</span>
         <span className="foot">{v.next ? `${v.next.label} · ${relativeDue(v.next.due_date)}` : 'Nothing outstanding'}</span>
       </div>
     </div>
@@ -148,7 +148,31 @@ type Editing =
   | { kind: 'course'; course?: Course }
   | { kind: 'instalment'; instalment?: Instalment; courseId?: string }
   | { kind: 'payment'; payment?: Payment; instalmentId?: string }
+  | { kind: 'proof'; instalment?: Instalment; payment?: Payment }
   | null;
+
+/** The documents that prove one step: linked to the instalment, or to a payment made for it. */
+function proofDocs(data: StudentBundle, t: { instalment?: Instalment; payment?: Payment }) {
+  const iid = t.instalment?.id ?? t.payment?.instalment_id ?? null;
+  const pays = new Set(data.payments.filter((p) => (iid ? p.instalment_id === iid : p.id === t.payment?.id)).map((p) => p.id));
+  return data.documents.filter((d) => (iid && d.instalment_id === iid) || (d.payment_id && pays.has(d.payment_id)));
+}
+
+/** Show a money amount in rupees. Records from before the portal went rupees-only may still carry a foreign part. */
+const rs = (lkr: number, foreign = 0, currency: Course['foreign_currency'] = null) => (foreign ? fmtAmount(lkr, foreign, currency) : fmtLkr(lkr));
+const paymentRs = (p: Payment) => (p.amount_foreign && !p.fx_rate ? fmtAmount(p.amount_lkr, p.amount_foreign, p.foreign_currency) : fmtLkr(p.total_lkr));
+
+function ProofButton({ docs, needsReceipt, onClick, label }: { docs: DocumentRec[]; needsReceipt: boolean; onClick: () => void; label: string }) {
+  const done = PROOF_STEPS.filter((st) => docs.some((d) => d.category === st.value)).length;
+  return (
+    <span className="pproof">
+      <Button small variant={docs.length ? 'ghost' : 'quiet'} onClick={onClick} aria-label={`Photos and receipts for ${label}`}>
+        {docs.length ? `${done}/3 · View` : '+ Add photos'}
+      </Button>
+      {needsReceipt && <Badge tone="soon">Receipt missing</Badge>}
+    </span>
+  );
+}
 
 function PaymentsTab({ data, reload }: { data: StudentBundle; reload: () => void }) {
   const { profile } = usePortal();
@@ -182,29 +206,36 @@ function PaymentsTab({ data, reload }: { data: StudentBundle; reload: () => void
               <div><dt>Started</dt><dd>{fmtDate(c.start_date)}</dd></div>
               <div><dt>Length</dt><dd>{c.duration_years ? `${c.duration_years} year${c.duration_years === 1 ? '' : 's'}` : '—'}</dd></div>
               <div><dt>Billing</dt><dd>{c.payment_plan || '—'}</dd></div>
-              <div><dt>Total fee</dt><dd>{fmtAmount(c.total_fee_lkr, c.total_fee_foreign, c.foreign_currency)}</dd></div>
+              <div><dt>Total fee</dt><dd>{rs(c.total_fee_lkr, c.total_fee_foreign, c.foreign_currency)}</dd></div>
             </dl>
 
             <h3 className="psub">Payment schedule</h3>
             {rows.length ? (
               <div className="ptable-wrap">
-                <table className="ptable">
+                <table className="ptable pstack">
                   <thead>
-                    <tr><th>For</th><th>Due</th><th className="num">Amount</th><th>Who pays</th><th>Status</th>{isAdmin && <th><span className="sr-only">Actions</span></th>}</tr>
+                    <tr><th>For</th><th>Due</th><th className="num">Amount</th><th>Who pays</th><th>Status</th><th>Photos &amp; receipts</th>{isAdmin && <th><span className="sr-only">Actions</span></th>}</tr>
                   </thead>
                   <tbody>
                     {rows.map((i) => {
                       const st = dueState(i);
                       return (
                         <tr key={i.id} className={st === 'overdue' ? 'row-alert' : undefined}>
-                          <td>{i.label}{i.notes && <small className="pnote">{i.notes}</small>}</td>
-                          <td>{fmtDate(i.due_date)}</td>
-                          <td className="num">{fmtAmount(i.amount_lkr, i.amount_foreign, i.foreign_currency)}</td>
-                          <td>{i.funded_by === 'self' ? 'Family' : 'Trust'}</td>
-                          <td>
+                          <td className="pstack-title">{i.label}{i.notes && <small className="pnote">{i.notes}</small>}</td>
+                          <td data-label="Due">{fmtDate(i.due_date)}</td>
+                          <td data-label="Amount" className="num">{rs(i.amount_lkr, i.amount_foreign, i.foreign_currency)}</td>
+                          <td data-label="Who pays">{i.funded_by === 'self' ? 'Family' : 'Trust'}</td>
+                          <td data-label="Status">
                             <Badge tone={st === 'paid' ? 'paid' : st === 'overdue' ? 'overdue' : st === 'soon' ? 'soon' : 'neutral'}>
                               {st === 'paid' ? 'Paid' : st === 'cancelled' ? 'Cancelled' : relativeDue(i.due_date)}
                             </Badge>
+                          </td>
+                          <td data-label="Photos">
+                            {(() => {
+                              const docs = proofDocs(data, { instalment: i });
+                              return <ProofButton docs={docs} label={i.label} onClick={() => setEditing({ kind: 'proof', instalment: i })}
+                                needsReceipt={i.status === 'paid' && i.funded_by === 'trust' && !docs.some((d) => d.category === 'receipt')} />;
+                            })()}
                           </td>
                           {isAdmin && (
                             <td className="pactions">
@@ -235,20 +266,22 @@ function PaymentsTab({ data, reload }: { data: StudentBundle; reload: () => void
       <Card title="Payment history" actions={isAdmin && data.courses.length > 0 && <Button small variant="primary" onClick={() => setEditing({ kind: 'payment' })}>Log a payment</Button>}>
         {data.payments.length ? (
           <div className="ptable-wrap">
-            <table className="ptable">
+            <table className="ptable pstack">
               <thead>
-                <tr><th>Date</th><th>For</th><th className="num">Amount</th><th className="num">Rate</th><th className="num">Cost in rupees</th><th>Paid by</th><th>Details</th>{isAdmin && <th><span className="sr-only">Actions</span></th>}</tr>
+                <tr><th>Date</th><th>For</th><th className="num">Amount</th><th>Paid by</th><th>Details</th><th>Photos &amp; receipts</th>{isAdmin && <th><span className="sr-only">Actions</span></th>}</tr>
               </thead>
               <tbody>
                 {data.payments.map((p) => (
                   <tr key={p.id}>
-                    <td>{fmtDate(p.paid_on)}</td>
-                    <td>{(p.instalment_id && instLabel.get(p.instalment_id)) || '—'}</td>
-                    <td className="num">{fmtAmount(p.amount_lkr, p.amount_foreign, p.foreign_currency)}</td>
-                    <td className="num">{p.amount_foreign ? (p.fx_rate ? `${p.fx_rate} / ${p.foreign_currency}` : <Badge tone="soon">Not set</Badge>) : '—'}</td>
-                    <td className="num">{fmtLkr(p.total_lkr)}</td>
-                    <td>{(p.trust_id && trustName.get(p.trust_id)) || 'Family'}</td>
-                    <td className="pdetails">{[p.method, p.paid_to, p.reference].filter(Boolean).join(' · ') || '—'}{p.notes && <small className="pnote">{p.notes}</small>}</td>
+                    <td className="pstack-title">{fmtDate(p.paid_on)}</td>
+                    <td data-label="For">{(p.instalment_id && instLabel.get(p.instalment_id)) || '—'}</td>
+                    <td data-label="Amount" className="num">{paymentRs(p)}</td>
+                    <td data-label="Paid by">{(p.trust_id && trustName.get(p.trust_id)) || 'Family'}</td>
+                    <td data-label="Details" className="pdetails">{[p.method, p.paid_to, p.reference].filter(Boolean).join(' · ') || '—'}{p.notes && <small className="pnote">{p.notes}</small>}</td>
+                    <td data-label="Photos">
+                      <ProofButton docs={proofDocs(data, { payment: p })} needsReceipt={false} label={`the payment on ${fmtDate(p.paid_on)}`}
+                        onClick={() => setEditing({ kind: 'proof', payment: p, instalment: data.instalments.find((i) => i.id === p.instalment_id) })} />
+                    </td>
                     {isAdmin && <td className="pactions"><Button small variant="quiet" onClick={() => setEditing({ kind: 'payment', payment: p })}>Edit</Button></td>}
                   </tr>
                 ))}
@@ -260,6 +293,9 @@ function PaymentsTab({ data, reload }: { data: StudentBundle; reload: () => void
         )}
       </Card>
 
+      {editing?.kind === 'proof' && (
+        <ProofModal data={data} instalment={editing.instalment} payment={editing.payment} onClose={() => setEditing(null)} onChanged={reload} />
+      )}
       {editing?.kind === 'course' && (
         <CourseForm studentId={data.student.id} trusts={data.trusts} course={editing.course} onClose={() => setEditing(null)} onSaved={done} />
       )}
@@ -272,6 +308,80 @@ function PaymentsTab({ data, reload }: { data: StudentBundle; reload: () => void
           payment={editing.payment} instalmentId={editing.instalmentId} onClose={() => setEditing(null)} onSaved={done} />
       )}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------------
+
+/**
+ * Every step of one payment in one place: the invoice from the institution, the cheque or money from the trust,
+ * and the institution's receipt. Students and trustees can both add a photo to any step.
+ */
+function ProofModal({ data, instalment, payment, onClose, onChanged }: {
+  data: StudentBundle; instalment?: Instalment; payment?: Payment; onClose: () => void; onChanged: () => void;
+}) {
+  const { api, profile } = usePortal();
+  const isAdmin = profile.role === 'admin';
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState<DocCategory | null>(null);
+  const docs = proofDocs(data, { instalment, payment });
+  const title = instalment ? instalment.label : `Payment on ${fmtDate(payment?.paid_on)}`;
+  const link: DocLink = instalment ? { instalment_id: instalment.id } : { payment_id: payment?.id ?? null };
+  const steps = [...PROOF_STEPS, { value: 'other' as DocCategory, label: 'Anything else', hint: 'e.g. a bank slip or a letter from the institution' }];
+  const paidFor = data.payments.filter((p) => (instalment ? p.instalment_id === instalment.id : p.id === payment?.id));
+
+  const upload = async (category: DocCategory, file: File | undefined) => {
+    if (!file) return;
+    if (!acceptsFile(file)) return setError('Please upload a photo or a PDF.');
+    if (fileTooLarge(file)) return setError('That file is too large. A phone photo or a smaller PDF will work.');
+    setBusy(category);
+    setError('');
+    try {
+      const stepLabel = PROOF_STEPS.find((s) => s.value === category)?.label ?? 'Document';
+      await api.uploadDocument(data.student.id, file, category, `${stepLabel} · ${title}`, isAdmin ? 'admin' : 'student', link);
+      onChanged();
+    } catch (e) {
+      setError(friendlyError(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Modal title={`Photos & receipts · ${title}`} onClose={onClose} wide footer={<Button onClick={onClose}>Done</Button>}>
+      <p className="pmuted">
+        {instalment ? <>{rs(instalment.amount_lkr, instalment.amount_foreign, instalment.foreign_currency)} · {instalment.status === 'paid' ? 'Paid' : relativeDue(instalment.due_date)}</> : null}
+        {paidFor.length ? <> · Paid {paidFor.map((p) => `${paymentRs(p)} on ${fmtDate(p.paid_on)}`).join(', ')}</> : null}
+      </p>
+      <p className="pmuted small">Add a clear photo for each step. On a phone you can take the picture straight away.</p>
+      <ol className="psteps">
+        {steps.map((st, n) => {
+          const mine = docs.filter((d) => d.category === st.value);
+          const inputId = `proof-${st.value}`;
+          return (
+            <li key={st.value} className={mine.length ? 'done' : undefined}>
+              <span className="pstep-n" aria-hidden="true">{mine.length ? '✓' : n + 1}</span>
+              <div className="pstep-main">
+                <strong>{st.label}</strong>
+                <span className="pmuted small">{st.hint}</span>
+                {mine.length > 0 && (
+                  <ul className="pdocs">
+                    {mine.map((d) => <DocRow key={d.id} doc={d} canDelete={isAdmin} onChanged={onChanged} onError={setError} />)}
+                  </ul>
+                )}
+              </div>
+              <input id={inputId} type="file" accept={ACCEPT_ATTR} className="sr-only" disabled={busy !== null}
+                aria-label={`${st.label}: add a photo or PDF`}
+                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; upload(st.value, f); }} />
+              <label className={`pbtn small ${mine.length ? 'quiet' : 'ghost'}`} htmlFor={inputId} aria-hidden="true">
+                {busy === st.value ? 'Uploading…' : mine.length ? '+ Add another' : '+ Add photo'}
+              </label>
+            </li>
+          );
+        })}
+      </ol>
+      {error && <p className="perror" role="alert">{error}</p>}
+    </Modal>
   );
 }
 
@@ -358,7 +468,7 @@ function DocumentsTab({ data, reload }: { data: StudentBundle; reload: () => voi
   return (
     <>
       <Card title={isAdmin ? 'Add a document' : 'Send a document to the trustees'}>
-        {!isAdmin && <p className="pmuted">Upload new invoices from your institution, semester results and receipts here. A clear phone photo is fine.</p>}
+        {!isAdmin && <p className="pmuted">Upload semester results and other documents here. For an invoice, cheque or receipt that belongs to a payment, use “Photos &amp; receipts” next to that payment on the Course &amp; payments tab, so it stays with the right payment.</p>}
         <div className="pupload">
           <label className="pfile-pick">
             <span>{file ? file.name : 'Choose a photo or PDF'}</span>
@@ -382,7 +492,7 @@ function DocumentsTab({ data, reload }: { data: StudentBundle; reload: () => voi
               <h3 className="psub">{label.get(g)}</h3>
               <ul className="pdocs">
                 {data.documents.filter((d) => d.category === g).map((d) => (
-                  <DocRow key={d.id} doc={d} canDelete={isAdmin} onChanged={reload} onError={setError} />
+                  <DocRow key={d.id} doc={d} canDelete={isAdmin} onChanged={reload} onError={setError} forLabel={linkLabel(data, d)} />
                 ))}
               </ul>
             </div>
@@ -395,7 +505,14 @@ function DocumentsTab({ data, reload }: { data: StudentBundle; reload: () => voi
   );
 }
 
-function DocRow({ doc, canDelete, onChanged, onError }: { doc: DocumentRec; canDelete: boolean; onChanged: () => void; onError: (m: string) => void }) {
+function linkLabel(data: StudentBundle, d: DocumentRec) {
+  const iid = d.instalment_id ?? data.payments.find((p) => p.id === d.payment_id)?.instalment_id;
+  if (iid) return data.instalments.find((i) => i.id === iid)?.label;
+  const p = data.payments.find((x) => x.id === d.payment_id);
+  return p ? `Payment on ${fmtDate(p.paid_on)}` : undefined;
+}
+
+function DocRow({ doc, canDelete, onChanged, onError, forLabel }: { doc: DocumentRec; canDelete: boolean; onChanged: () => void; onError: (m: string) => void; forLabel?: string }) {
   const { api } = usePortal();
   const who = doc.uploaded_by_role === 'student' ? 'Uploaded by student' : doc.uploaded_by_role === 'applicant' ? 'From application' : 'Added by trustee';
   return (
@@ -403,7 +520,7 @@ function DocRow({ doc, canDelete, onChanged, onError }: { doc: DocumentRec; canD
       <span className="pdoc-icon" aria-hidden="true">{doc.mime === 'application/pdf' ? 'PDF' : 'IMG'}</span>
       <span className="pdoc-main">
         <span className="t">{doc.title}</span>
-        <span className="m">{who} · {fmtDate(doc.created_at)}{doc.size_bytes ? ` · ${fmtBytes(doc.size_bytes)}` : ''}</span>
+        <span className="m">{forLabel ? `For ${forLabel} · ` : ''}{who} · {fmtDate(doc.created_at)}{doc.size_bytes ? ` · ${fmtBytes(doc.size_bytes)}` : ''}</span>
       </span>
       <Button small onClick={() => openFile(api, doc.bucket, doc.path, onError)}>Open</Button>
       {canDelete && (

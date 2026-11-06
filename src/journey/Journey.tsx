@@ -25,7 +25,6 @@ const SCENES = [
 const TOTAL = SCENES.length;
 const LEAF_YS = [700, 560, 420, 280, 140];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const CURRENCIES = ['GBP', 'USD', 'EUR', 'AUD'];
 const LEVELS = ['G.C.E. O/L', 'G.C.E. A/L', 'IGCSE', 'IAS / IAL', 'Diploma', 'Degree', 'Other'];
 
 const fmt = (n: number) => n.toLocaleString('en-LK');
@@ -52,11 +51,11 @@ function validate(scene: number, a: Answers, files: Files): FieldError {
       if (!a.institution.trim()) return { field: 'institution', msg: 'Where will you study?' };
       return a.durationYears ? null : { field: 'durationYears-0', msg: 'How many years is the course?' };
     case 8: {
-      if (!toNumber(a.totalFeeLkr) && !toNumber(a.totalFeeForeign)) return { field: 'totalFeeLkr', msg: 'Roughly how much does the whole course cost?' };
-      if (toNumber(a.selfFinancedLkr) > toNumber(a.totalFeeLkr) || toNumber(a.selfFinancedForeign) > toNumber(a.totalFeeForeign))
+      if (!toNumber(a.totalFeeLkr)) return { field: 'totalFeeLkr', msg: 'Roughly how much does the whole course cost?' };
+      if (toNumber(a.selfFinancedLkr) > toNumber(a.totalFeeLkr))
         return { field: 'selfFinancedLkr', msg: 'What your family covers can’t be more than the total.' };
       if (!a.assistanceKind) return { field: 'assistanceKind-0', msg: 'Choose grant, loan, or either.' };
-      if (!a.plan.some((p) => p.label.trim() && (toNumber(p.amountLkr) || toNumber(p.amountForeign))))
+      if (!a.plan.some((p) => p.label.trim() && toNumber(p.amountLkr)))
         return { field: `plan-label-${a.plan[0]?.id}`, msg: 'Add at least one payment — what it’s for and how much.' };
       return null;
     }
@@ -216,7 +215,6 @@ export function Journey({ onClose }: { onClose: () => void }) {
   const errFor = (f: string) => (error?.field === f ? error.msg : undefined);
   const a = answers;
   const req = requested(a);
-  const cur = a.foreignCurrency;
 
   let content: ReactNode;
 
@@ -379,37 +377,24 @@ export function Journey({ onClose }: { onClose: () => void }) {
         break;
       case 8:
         prompt = 'What does it cost, and what do you need?';
-        sub = 'Estimates are fine. Many UK-linked courses have a rupee part and a foreign-currency part — add both if so.';
+        sub = 'Estimates are fine. Please give everything in rupees. If part of the fee is in pounds or another currency, convert it at today’s rate.';
         control = (
           <>
             <div className="money-grid">
-              <div className="money-head" aria-hidden="true"><span /><span>Rupees</span><span>Foreign part</span></div>
+              <div className="money-head" aria-hidden="true"><span /><span>Rupees</span></div>
               <div className="money-row">
                 <span className="money-label" id="lbl-total">Whole course fee</span>
                 <input id="totalFeeLkr" className="text-input" inputMode="numeric" aria-labelledby="lbl-total" aria-describedby="hint-lkr" placeholder="e.g. 1,320,000"
                   value={a.totalFeeLkr} onChange={(e) => set('totalFeeLkr', e.target.value)} aria-invalid={errFor('totalFeeLkr') ? true : undefined} />
-                <span className="money-foreign">
-                  <input className="text-input" inputMode="numeric" aria-label="Whole course fee, foreign part" placeholder="e.g. 950"
-                    value={a.totalFeeForeign} onChange={(e) => set('totalFeeForeign', e.target.value)} />
-                  <select className="text-input" aria-label="Currency" value={cur} onChange={(e) => set('foreignCurrency', e.target.value)}>
-                    {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </span>
               </div>
               <div className="money-row">
                 <span className="money-label" id="lbl-self">Your family can cover</span>
                 <input id="selfFinancedLkr" className="text-input" inputMode="numeric" aria-labelledby="lbl-self" placeholder="0"
                   value={a.selfFinancedLkr} onChange={(e) => set('selfFinancedLkr', e.target.value)} aria-invalid={errFor('selfFinancedLkr') ? true : undefined} />
-                <span className="money-foreign">
-                  <input className="text-input" inputMode="numeric" aria-label="Family can cover, foreign part" placeholder="0"
-                    value={a.selfFinancedForeign} onChange={(e) => set('selfFinancedForeign', e.target.value)} />
-                  <span className="money-cur">{cur}</span>
-                </span>
               </div>
               <div className="money-row total" aria-live="polite">
                 <span className="money-label">You’re asking the trust for</span>
                 <strong>Rs {fmt(req.lkr)}</strong>
-                <strong>{req.foreign ? `${fmt(req.foreign)} ${cur}` : '—'}</strong>
               </div>
             </div>
             <span id="hint-lkr" className="sr-only">Numbers only; commas are fine.</span>
@@ -431,7 +416,6 @@ export function Journey({ onClose }: { onClose: () => void }) {
                     placeholder="e.g. Year 2 — Semester 1" error={errFor(`plan-label-${p.id}`)} />
                   <TextField id={`plan-when-${p.id}`} label="Due" type="month" value={p.when} onChange={(v) => setPlan(p.id, 'when', v)} />
                   <TextField id={`plan-lkr-${p.id}`} label="Rupees" inputMode="numeric" value={p.amountLkr} onChange={(v) => setPlan(p.id, 'amountLkr', v)} placeholder="e.g. 220,000" />
-                  <TextField id={`plan-fx-${p.id}`} label={`${cur} (if any)`} inputMode="numeric" value={p.amountForeign} onChange={(v) => setPlan(p.id, 'amountForeign', v)} placeholder="0" />
                 </div>
                 <Chips name={`plan-payer-${p.id}`} label="Who pays this one?" value={p.payer} onPick={(v) => setPlan(p.id, 'payer', v)}
                   options={[{ value: 'trust', label: 'Asking the trust' }, { value: 'self', label: 'My family' }]} />
@@ -478,7 +462,7 @@ export function Journey({ onClose }: { onClose: () => void }) {
                 {a.courseTitle}{a.institution && ` · ${a.institution}`}{a.durationYears && ` · ${a.durationYears} yr`}
               </ReviewItem>
               <ReviewItem title="Asking the trust for" onEdit={() => editFromReview(8)}>
-                <strong>Rs {fmt(req.lkr)}{req.foreign ? ` + ${fmt(req.foreign)} ${cur}` : ''}</strong>
+                <strong>Rs {fmt(req.lkr)}</strong>
                 {a.assistanceKind && ` as ${a.assistanceKind === 'either' ? 'a grant or loan' : `a ${a.assistanceKind}`}`}
               </ReviewItem>
               <ReviewItem title="Documents" onEdit={() => editFromReview(3)}>

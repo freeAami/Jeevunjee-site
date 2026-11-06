@@ -123,6 +123,16 @@ ok('student uploads an invoice record', f"insert into documents (student_id, pat
 denied('student cannot file it as identity', f"insert into documents (student_id, path, category, title, uploaded_by, uploaded_by_role) values ('{S1}', 'students/{S1}/y.pdf', 'identity', 'ID', '{U}', 'student')", role='authenticated', uid=U)
 denied('student cannot pose as admin uploader', f"insert into documents (student_id, path, category, title, uploaded_by, uploaded_by_role) values ('{S1}', 'students/{S1}/y.pdf', 'invoice', 'I', '{U}', 'admin')", role='authenticated', uid=U)
 denied('student cannot add to another file', f"insert into documents (student_id, path, category, title, uploaded_by, uploaded_by_role) values ('{S2}', 'students/{S2}/y.pdf', 'invoice', 'I', '{U}', 'student')", role='authenticated', uid=U)
+# --- proof attached to a payment step ------------------------------------------
+I1 = ok('find own instalment', f"select id from instalments where student_id = '{S1}' order by label limit 1", role='authenticated', uid=U)
+I2 = ok('trustee finds the other student instalment', f"select id from instalments where student_id = '{S2}' limit 1", role='authenticated', uid=A)
+PAY1 = ok('trustee finds the payment', f"select id from payments where student_id = '{S1}' limit 1", role='authenticated', uid=A)
+ok('student attaches a cheque photo to own instalment', f"insert into documents (student_id, path, category, title, uploaded_by, uploaded_by_role, instalment_id) values ('{S1}', 'students/{S1}/chq.jpg', 'cheque', 'Cheque', '{U}', 'student', '{I1}')", role='authenticated', uid=U)
+ok('student attaches a receipt to own payment', f"insert into documents (student_id, path, category, title, uploaded_by, uploaded_by_role, payment_id) values ('{S1}', 'students/{S1}/rcpt.jpg', 'receipt', 'Receipt', '{U}', 'student', '{PAY1}')", role='authenticated', uid=U)
+denied('student cannot attach to another student instalment', f"insert into documents (student_id, path, category, title, uploaded_by, uploaded_by_role, instalment_id) values ('{S1}', 'students/{S1}/z.jpg', 'receipt', 'R', '{U}', 'student', '{I2}')", role='authenticated', uid=U)
+denied('trustee cannot link a document to another student payment step', f"insert into documents (student_id, path, category, title, instalment_id) values ('{S1}', 'students/{S1}/z.jpg', 'receipt', 'R', '{I2}')", role='authenticated', uid=A)
+denied('a document cannot be moved to another student step later', f"update documents set instalment_id = '{I2}' where path = 'students/{S1}/chq.jpg'", role='authenticated', uid=A)
+equals('student sees proof linked to own instalment', f"select count(*) from documents where instalment_id = '{I1}'", 1, role='authenticated', uid=U)
 ok('student uploads to own folder', f"insert into storage.objects (bucket_id, name) values ('files', 'students/{S1}/mine.pdf')", role='authenticated', uid=U)
 denied('student cannot upload to another folder', f"insert into storage.objects (bucket_id, name) values ('files', 'students/{S2}/x.pdf')", role='authenticated', uid=U)
 equals('student storage view is own files + own application files', "select string_agg(name, ',' order by name) from storage.objects",
@@ -146,6 +156,17 @@ denied('uploads pause after 150 an hour', f"insert into storage.objects (bucket_
 ok('clear the uploads', "delete from storage.objects where name like 'incoming/%/f'")
 
 equals('records untouched after student attempts', f"select (select full_name from students where id = '{S1}') || '|' || (select count(*) from instalments where status='paid') || '|' || (select count(*) from storage.objects)", 'Test Applicant|0|5', role='authenticated', uid=A)
+# --- one currency ----------------------------------------------------------------
+denied('anon cannot convert currencies', "select convert_to_rupees('{\"GBP\": 400}')", role='anon')
+denied('student cannot convert currencies', "select convert_to_rupees('{\"GBP\": 400}')", role='authenticated', uid=U)
+denied('unknown currency refused', "select convert_to_rupees('{\"XYZ\": 400}')", role='authenticated', uid=A)
+denied('zero rate refused', "select convert_to_rupees('{\"GBP\": 0}')", role='authenticated', uid=A)
+equals('trustee converts old foreign amounts', "select convert_to_rupees('{\"GBP\": 400}')", 3, role='authenticated', uid=A)
+equals('payment kept its own locked rate', f"select amount_lkr || '|' || amount_foreign || '|' || total_lkr from payments where id = '{PAY1}'", '196250.00|0.00|196250.00', role='authenticated', uid=A)
+equals('instalment folded into rupees', f"select amount_lkr || '|' || amount_foreign from instalments where student_id = '{S1}' and label = 'Year 3'", '820000.00|0.00', role='authenticated', uid=A)
+equals('course fee folded into rupees', f"select total_fee_lkr || '|' || coalesce(foreign_currency, '-') from courses where student_id = '{S1}'", '1700000.00|-', role='authenticated', uid=A)
+equals('conversion leaves a note', f"select count(*) from instalments where notes like '%950.00 GBP, converted at 400%'", 1, role='authenticated', uid=A)
+equals('running it again changes nothing', "select convert_to_rupees('{\"GBP\": 400}')", 0, role='authenticated', uid=A)
 # --- deletion ------------------------------------------------------------------
 P = ok('find the application photo document', f"select id from documents where student_id = '{S1}' and category = 'photo'", role='authenticated', uid=A)
 equals('trustee deletes the photo document', f"with d as (delete from documents where id = '{P}' returning 1) select count(*) from d", 1, role='authenticated', uid=A)

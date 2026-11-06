@@ -153,7 +153,7 @@ create table if not exists public.documents (
   bucket text not null default 'files' check (bucket in ('files', 'applications')),
   path text not null,
   category text not null check (category in
-    ('photo', 'identity', 'certificate', 'results', 'invoice', 'receipt', 'fee_schedule', 'application', 'income', 'other')),
+    ('photo', 'identity', 'certificate', 'results', 'invoice', 'cheque', 'receipt', 'fee_schedule', 'application', 'income', 'other')),
   title text not null,
   mime text,
   size_bytes bigint,
@@ -177,6 +177,37 @@ create index if not exists instalments_due_idx on public.instalments (due_date) 
 create index if not exists payments_student_idx on public.payments (student_id);
 create index if not exists documents_student_idx on public.documents (student_id);
 create index if not exists notes_student_idx on public.notes (student_id);
+
+-- ---------- proof for each payment step (Nov 2026) -----------------------------------------------------
+-- A document can belong to one step of the payment schedule (an instalment) and/or one logged payment,
+-- so the invoice, the cheque from the trust and the institution's receipt sit together with that payment.
+alter table public.documents add column if not exists instalment_id uuid references public.instalments (id) on delete set null;
+alter table public.documents add column if not exists payment_id uuid references public.payments (id) on delete set null;
+create index if not exists documents_instalment_idx on public.documents (instalment_id) where instalment_id is not null;
+create index if not exists documents_payment_idx on public.documents (payment_id) where payment_id is not null;
+-- Older databases have the category check without 'cheque'.
+alter table public.documents drop constraint if exists documents_category_check;
+alter table public.documents add constraint documents_category_check check (category in
+  ('photo', 'identity', 'certificate', 'results', 'invoice', 'cheque', 'receipt', 'fee_schedule', 'application', 'income', 'other'));
+
+-- A document may only point at an instalment or payment of the same student.
+create or replace function public.check_document_link() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.instalment_id is not null and not exists
+     (select 1 from public.instalments i where i.id = new.instalment_id and i.student_id = new.student_id) then
+    raise exception 'JVJ_LINK_MISMATCH: that payment step belongs to a different student';
+  end if;
+  if new.payment_id is not null and not exists
+     (select 1 from public.payments p where p.id = new.payment_id and p.student_id = new.student_id) then
+    raise exception 'JVJ_LINK_MISMATCH: that payment belongs to a different student';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists documents_link_check on public.documents;
+create trigger documents_link_check before insert or update of instalment_id, payment_id, student_id on public.documents
+  for each row execute function public.check_document_link();
 
 -- =====================================================================================================
 -- Helpers
@@ -535,6 +566,58 @@ drop trigger if exists documents_forget on public.documents;
 create trigger documents_forget after delete on public.documents
   for each row execute function public.forget_deleted_document();
 
+-- ---------- one currency (Nov 2026) -------------------------------------------------------------------
+-- The portal now works in rupees only. This folds the old foreign-currency amounts into rupees, once:
+--   • payments that already have their own exchange rate use that rate;
+--   • everything else uses the rate the trustee enters per currency, e.g. {"GBP": 390, "EUR": 330}.
+-- Each converted row gets a note saying what it was, so nothing is lost. Returns how many rows changed.
+create or replace function public.convert_to_rupees(p_rates jsonb) returns integer
+language plpgsql security definer set search_path = public as $$
+declare
+  n integer := 0;
+  c integer;
+  cur text;
+  rate numeric;
+begin
+  if not public.is_admin() then raise exception 'not allowed'; end if;
+  if p_rates is null or jsonb_typeof(p_rates) <> 'object' then raise exception 'rates must be an object'; end if;
+
+  update public.payments
+     set amount_lkr = amount_lkr + round(amount_foreign * fx_rate, 2),
+         notes = concat_ws(' · ', nullif(notes, ''),
+                           format('Was %s %s at %s', amount_foreign, foreign_currency, fx_rate)),
+         amount_foreign = 0, foreign_currency = null, fx_rate = null
+   where amount_foreign > 0 and fx_rate is not null;
+  get diagnostics c = row_count; n := n + c;
+
+  for cur, rate in select key, (value #>> '{}')::numeric from jsonb_each(p_rates) loop
+    if cur not in ('GBP', 'USD', 'EUR', 'AUD') then raise exception 'unknown currency %', cur; end if;
+    if rate is null or rate <= 0 or rate > 100000 then raise exception 'rate for % must be a positive number', cur; end if;
+
+    update public.courses
+       set total_fee_lkr = total_fee_lkr + round(total_fee_foreign * rate, 2),
+           notes = concat_ws(' · ', nullif(notes, ''), format('Fee was also %s %s, converted at %s', total_fee_foreign, cur, rate)),
+           total_fee_foreign = 0, foreign_currency = null
+     where total_fee_foreign > 0 and coalesce(foreign_currency, 'GBP') = cur;
+    get diagnostics c = row_count; n := n + c;
+
+    update public.instalments
+       set amount_lkr = amount_lkr + round(amount_foreign * rate, 2),
+           notes = concat_ws(' · ', nullif(notes, ''), format('Was also %s %s, converted at %s', amount_foreign, cur, rate)),
+           amount_foreign = 0, foreign_currency = null
+     where amount_foreign > 0 and coalesce(foreign_currency, 'GBP') = cur;
+    get diagnostics c = row_count; n := n + c;
+
+    update public.payments
+       set amount_lkr = amount_lkr + round(amount_foreign * rate, 2),
+           notes = concat_ws(' · ', nullif(notes, ''), format('Was %s %s, converted at %s', amount_foreign, cur, rate)),
+           amount_foreign = 0, foreign_currency = null
+     where amount_foreign > 0 and fx_rate is null and foreign_currency = cur;
+    get diagnostics c = row_count; n := n + c;
+  end loop;
+  return n;
+end $$;
+
 -- =====================================================================================================
 -- Row-level security: the rules above, enforced on every table.
 -- =====================================================================================================
@@ -592,7 +675,7 @@ create policy "student uploads own" on public.documents for insert to authentica
   and uploaded_by_role = 'student'
   and bucket = 'files'
   and path like 'students/' || public.my_student_id()::text || '/%'
-  and category in ('invoice', 'results', 'receipt', 'certificate', 'other')
+  and category in ('invoice', 'cheque', 'results', 'receipt', 'certificate', 'other')
 );
 
 -- Who may call which function. Everything not listed is closed to the public.
@@ -604,6 +687,8 @@ revoke execute on function public.handle_new_user() from public, anon, authentic
 revoke execute on function public.instalment_student() from public, anon, authenticated;
 revoke execute on function public.touch_updated_at() from public, anon, authenticated;
 revoke execute on function public.forget_deleted_document() from public, anon, authenticated;
+revoke execute on function public.check_document_link() from public, anon, authenticated;
+revoke execute on function public.convert_to_rupees(jsonb) from public, anon;
 revoke execute on function public.random_code(int) from anon, authenticated, public;
 grant execute on function public.submit_application(jsonb, jsonb, text) to anon, authenticated;
 grant execute on function public.claim_notification(text, text) to anon, authenticated;
@@ -612,6 +697,7 @@ grant execute on function public.enrol_application(uuid, uuid) to authenticated;
 grant execute on function public.issue_access_code(uuid) to authenticated;
 grant execute on function public.issue_trustee_code(text) to authenticated;
 grant execute on function public.stale_application_uploads() to authenticated;
+grant execute on function public.convert_to_rupees(jsonb) to authenticated;
 
 -- =====================================================================================================
 -- File storage: two private buckets.

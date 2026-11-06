@@ -51,8 +51,8 @@ enough to sign up as them. If a code expires, just run the line again for a new 
    *(Every sign-up already needs a one-time code: trustees get theirs from step 3, students from a trustee.
    Supabase's built-in email can't reach ordinary inboxes, so confirmation emails would never arrive.)*
 2. **Authentication → URL Configuration**:
-   - **Site URL:** `https://freeaami.github.io/Jeevunjee-site/`
-   - **Redirect URLs → Add URL:** `https://freeaami.github.io/Jeevunjee-site/**`
+   - **Site URL:** `https://jeevunjee.com/`
+   - **Redirect URLs → Add URL:** `https://jeevunjee.com/**`
 
 ## 5. Send the two keys
 
