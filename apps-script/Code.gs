@@ -28,7 +28,7 @@ const SEND_APPLICANT_CONFIRMATION = true;
 const REPLY_TO = ADMIN_EMAILS.join(',');
 
 /** The trustee portal. Each email links straight to the application there. */
-const PORTAL_URL = 'https://freeaami.github.io/Jeevunjee-site/#/portal/applications';
+const PORTAL_URL = 'https://jeevunjee.com/#/portal/applications';
 
 /** The portal database (public address and public key — the same ones the website uses). */
 const SUPABASE_URL = 'https://qtigkjwqqkdtikqkvlgc.supabase.co';

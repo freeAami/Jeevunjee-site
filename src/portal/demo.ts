@@ -7,7 +7,7 @@ import type {
 
 type Db = Overview & { documents: DocumentRec[]; notes: Note[]; profiles: Profile[] };
 
-const KEY = 'jvj-demo-data-v1';
+const KEY = 'jvj-demo-data-v2';
 const SESSION_KEY = 'jvj-demo-session';
 const now = () => new Date().toISOString();
 const id = () => crypto.randomUUID();
@@ -45,36 +45,35 @@ function seed(): Db {
   });
   const c1 = course(s1, rukan, {
     title: 'BSc (Hons) Business & Management', institution: 'Sample Campus, Colombo', awarding_body: 'Sample University (UK)',
-    start_date: day(-400), duration_years: 3, payment_plan: 'Per semester', total_fee_lkr: 250000,
-    total_fee_foreign: 975, foreign_currency: 'GBP',
+    start_date: day(-400), duration_years: 3, payment_plan: 'Per semester', total_fee_lkr: 630000,
   });
   const c2 = course(s2, noorbhai, {
     title: 'Diploma in Teaching & Learning (Level 5)', institution: 'Sample Institute', start_date: day(-200),
-    duration_years: 1, payment_plan: 'Annually', total_fee_lkr: 265000, total_fee_foreign: 345, foreign_currency: 'GBP',
+    duration_years: 1, payment_plan: 'Annually', total_fee_lkr: 400000,
   });
   const c3 = course(s3, rukan, {
     title: 'BEng (Hons) Electrical & Electronic Engineering', institution: 'Sample Academy', start_date: day(-30),
-    duration_years: 3, payment_plan: 'Per semester', total_fee_lkr: 1320000, total_fee_foreign: 950, foreign_currency: 'GBP',
+    duration_years: 3, payment_plan: 'Per semester', total_fee_lkr: 1690000,
   });
   const c4 = course(s4, noorbhai, {
     title: 'Higher Diploma in Interior Design', institution: 'Sample Design School', duration_years: 2,
     total_fee_lkr: 730000, status: 'completed',
   });
 
-  const inst = (c: Course, label: string, due: string, lkr: number, gbp = 0, status: Instalment['status'] = 'due', funded_by: Instalment['funded_by'] = 'trust'): Instalment => ({
-    id: id(), course_id: c.id, student_id: c.student_id, label, due_date: due, amount_lkr: lkr, amount_foreign: gbp,
-    foreign_currency: gbp ? 'GBP' : null, funded_by, status, notes: null, created_at: now(),
+  const inst = (c: Course, label: string, due: string, lkr: number, _unused = 0, status: Instalment['status'] = 'due', funded_by: Instalment['funded_by'] = 'trust'): Instalment => ({
+    id: id(), course_id: c.id, student_id: c.student_id, label, due_date: due, amount_lkr: lkr, amount_foreign: 0,
+    foreign_currency: null, funded_by, status, notes: null, created_at: now(),
   });
   const i11 = inst(c1, 'Registration fee', day(-380), 50000, 0, 'paid');
-  const i12 = inst(c1, '1st instalment', day(-200), 50000, 325, 'paid');
-  const i13 = inst(c1, '2nd instalment', day(-12), 50000, 325);
-  const i14 = inst(c1, '3rd instalment', day(170), 50000, 325);
+  const i12 = inst(c1, '1st instalment', day(-200), 176750, 0, 'paid');
+  const i13 = inst(c1, '2nd instalment', day(-12), 176750);
+  const i14 = inst(c1, '3rd instalment', day(170), 176750);
   const i15 = inst(c1, '4th instalment', day(350), 50000);
-  const i21 = inst(c2, 'Annual fee', day(18), 265000, 345);
+  const i21 = inst(c2, 'Annual fee', day(18), 400000);
   const i31 = inst(c3, 'Year 1', day(-30), 440000, 0, 'paid', 'self');
   const i32 = inst(c3, 'Year 2 — Semester 1', day(40), 220000);
   const i33 = inst(c3, 'Year 2 — Semester 2', day(220), 220000);
-  const i34 = inst(c3, 'Year 3 (incl. royalty fee)', day(400), 440000, 950);
+  const i34 = inst(c3, 'Year 3 (incl. royalty fee)', day(400), 810000);
   const i41 = inst(c4, 'Course fee', day(-900), 420000, 0, 'paid');
   const i42 = inst(c4, 'Final year', day(-500), 310000, 0, 'paid');
 
@@ -113,13 +112,18 @@ function seed(): Db {
     instalments: [i11, i12, i13, i14, i15, i21, i31, i32, i33, i34, i41, i42],
     payments: [
       pay(i11, rukan, day(-380), null),
-      pay(i12, rukan, day(-195), 450, { reference: 'TT-0042' }),
+      pay(i12, rukan, day(-195), null, { reference: 'CHQ-0042', method: 'Cheque' }),
       pay(i31, rukan, day(-30), null, { paid_to: 'Paid by family', notes: 'Self-financed — recorded for completeness' }),
       pay(i41, noorbhai, day(-900), null),
       pay(i42, noorbhai, day(-500), null),
     ].map((p) => (p.instalment_id === i31.id ? { ...p, trust_id: null } : p)),
     applications,
-    documents: [],
+    documents: (['invoice', 'cheque', 'receipt'] as const).map((category, n): DocumentRec => ({
+      id: id(), student_id: s1.id, bucket: 'files', path: `students/${s1.id}/sample-${category}.jpg`, category,
+      title: `${['Invoice from the institution', 'Cheque from the trust', 'Receipt from the institution'][n]} · 1st instalment`,
+      mime: 'image/jpeg', size_bytes: 240000, uploaded_by_role: category === 'cheque' ? 'admin' : 'student',
+      instalment_id: i12.id, payment_id: null, created_at: now(),
+    })),
     notes: [
       { id: id(), student_id: s1.id, body: 'Spoke to Amaya’s mother — 2nd instalment invoice expected from the campus this week.', author_name: 'Trustee', created_at: now() },
     ],
@@ -289,14 +293,35 @@ export function createDemoApi(): PortalApi {
       db.payments = db.payments.filter((p) => p.id !== pid);
       save();
     },
-    async uploadDocument(studentId, file, category, title, asRole) {
+    async uploadDocument(studentId, file, category, title, asRole, link) {
       const own = visibleStudentId();
       if (own && own !== studentId) throw new Error('You don’t have permission to do that.');
       db.documents.unshift({
         id: id(), student_id: studentId, bucket: 'files', path: addFile(studentId, file), category, title: title || file.name,
         mime: file.type, size_bytes: file.size, uploaded_by_role: asRole, created_at: now(),
+        instalment_id: link?.instalment_id ?? null, payment_id: link?.payment_id ?? null,
       });
       save();
+    },
+    async convertToRupees(rates) {
+      let n = 0;
+      for (const p of db.payments) if (p.amount_foreign && p.fx_rate) {
+        p.amount_lkr += Math.round(p.amount_foreign * p.fx_rate * 100) / 100;
+        p.amount_foreign = 0; p.foreign_currency = null; p.fx_rate = null; p.total_lkr = p.amount_lkr; n++;
+      }
+      for (const [cur, rate] of Object.entries(rates)) {
+        for (const c of db.courses) if (c.total_fee_foreign && (c.foreign_currency ?? 'GBP') === cur) {
+          c.total_fee_lkr += c.total_fee_foreign * rate; c.total_fee_foreign = 0; c.foreign_currency = null; n++;
+        }
+        for (const i of db.instalments) if (i.amount_foreign && (i.foreign_currency ?? 'GBP') === cur) {
+          i.amount_lkr += i.amount_foreign * rate; i.amount_foreign = 0; i.foreign_currency = null; n++;
+        }
+        for (const p of db.payments) if (p.amount_foreign && p.foreign_currency === cur) {
+          p.amount_lkr += p.amount_foreign * rate; p.amount_foreign = 0; p.foreign_currency = null; p.total_lkr = p.amount_lkr; n++;
+        }
+      }
+      save();
+      return n;
     },
     async deleteDocument(doc) {
       db.documents = db.documents.filter((d) => d.id !== doc.id);

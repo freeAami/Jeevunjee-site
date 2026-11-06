@@ -1,11 +1,18 @@
 import { useRef, useState } from 'react';
-import { fmtAmount, fmtLkr, today } from '../format';
-import {
-  CURRENCIES, type Course, type Currency, type Instalment, type Payment, type Student, type Trust,
-} from '../types';
+import { fmtAmount, fmtForeign, today } from '../format';
+import type { Course, Currency, Instalment, Payment, Student, Trust } from '../types';
 import { Button, Field, Modal, MoneyInput, Select, usePortal, useSaver } from '../ui';
 
-const currencyOpts = CURRENCIES.map((c) => ({ value: c, label: c }));
+/** Shown on records made before the portal went rupees-only, until a trustee converts them. */
+function LegacyForeign({ amount, currency }: { amount: number; currency: Currency | null }) {
+  if (!amount) return null;
+  return (
+    <p className="pmuted small wide">
+      This record also has {fmtForeign(amount, currency)} from before the portal used rupees only. Use
+      “Convert old amounts to rupees” on the Overview page to fold it in.
+    </p>
+  );
+}
 
 function useForm<T extends object>(initial: T) {
   const [v, setV] = useState<T>(initial);
@@ -75,8 +82,8 @@ export function CourseForm({ studentId, trusts, course, onClose, onSaved }: { st
   const [v, set] = useForm({
     trust_id: course?.trust_id ?? trusts[0]?.id ?? '', title: course?.title ?? '', institution: course?.institution ?? '',
     awarding_body: course?.awarding_body ?? '', start_date: course?.start_date ?? '', duration_years: course?.duration_years ?? null,
-    payment_plan: course?.payment_plan ?? '', total_fee_lkr: course?.total_fee_lkr ?? 0, total_fee_foreign: course?.total_fee_foreign ?? 0,
-    foreign_currency: course?.foreign_currency ?? 'GBP', status: course?.status ?? 'ongoing', notes: course?.notes ?? '',
+    payment_plan: course?.payment_plan ?? '', total_fee_lkr: course?.total_fee_lkr ?? 0,
+    status: course?.status ?? 'ongoing', notes: course?.notes ?? '',
   });
   const [titleErr, setTitleErr] = useState('');
   const { busy, error, run } = useSaver(onSaved);
@@ -91,7 +98,6 @@ export function CourseForm({ studentId, trusts, course, onClose, onSaved }: { st
         if (!v.title.trim()) return setTitleErr('Give the course a name.');
         run(() => api.saveCourse({
           ...v, id: course?.id, student_id: studentId, trust_id: v.trust_id || null,
-          foreign_currency: v.total_fee_foreign ? v.foreign_currency : null,
         } as Partial<Course>));
       }}>
         <Field label="Funded by">{(id) => <Select id={id} value={v.trust_id} onChange={(x) => set('trust_id', x)} options={trusts.map((t) => ({ value: t.id, label: t.name }))} />}</Field>
@@ -109,15 +115,8 @@ export function CourseForm({ studentId, trusts, course, onClose, onSaved }: { st
             <datalist id="plans"><option value="Per semester" /><option value="Per term" /><option value="Annually" /><option value="Full payment upfront" /><option value="Monthly" /></datalist>
           </>
         )}</Field>
-        <Field label="Total fee in rupees">{(id) => <MoneyInput id={id} value={v.total_fee_lkr} onChange={(x) => set('total_fee_lkr', x)} />}</Field>
-        <Field label="Plus a foreign-currency part" hint="e.g. a UK university's royalty fee">{(id) => (
-          <div className="pinline">
-            <MoneyInput id={id} value={v.total_fee_foreign} onChange={(x) => set('total_fee_foreign', x)} />
-            <select aria-label="Currency" value={v.foreign_currency} onChange={(e) => set('foreign_currency', e.target.value as Currency)}>
-              {currencyOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-        )}</Field>
+        <Field label="Total fee (rupees)" hint="If part is billed in pounds, convert it at the rate on the day">{(id) => <MoneyInput id={id} value={v.total_fee_lkr} onChange={(x) => set('total_fee_lkr', x)} />}</Field>
+        {course && <LegacyForeign amount={course.total_fee_foreign} currency={course.foreign_currency} />}
         <Field label="Notes" wide>{(id) => <textarea id={id} rows={2} value={v.notes} onChange={(e) => set('notes', e.target.value)} />}</Field>
         {error && <p className="perror wide" role="alert">{error}</p>}
       </form>
@@ -132,8 +131,7 @@ export function InstalmentForm({ courses, instalment, defaultCourseId, onClose, 
   const firstCourse = courses.find((c) => c.id === (instalment?.course_id ?? defaultCourseId)) ?? courses[0];
   const [v, set] = useForm({
     course_id: firstCourse?.id ?? '', label: instalment?.label ?? '', due_date: instalment?.due_date ?? '',
-    amount_lkr: instalment?.amount_lkr ?? 0, amount_foreign: instalment?.amount_foreign ?? 0,
-    foreign_currency: instalment?.foreign_currency ?? firstCourse?.foreign_currency ?? 'GBP',
+    amount_lkr: instalment?.amount_lkr ?? 0,
     funded_by: instalment?.funded_by ?? 'trust', status: instalment?.status ?? 'due', notes: instalment?.notes ?? '',
   });
   const [labelErr, setLabelErr] = useState('');
@@ -150,7 +148,6 @@ export function InstalmentForm({ courses, instalment, defaultCourseId, onClose, 
         const c = courses.find((x) => x.id === v.course_id);
         run(() => api.saveInstalment({
           ...v, id: instalment?.id, student_id: c?.student_id, due_date: v.due_date || null,
-          foreign_currency: v.amount_foreign ? v.foreign_currency : null,
         } as Partial<Instalment>));
       }}>
         {courses.length > 1 && (
@@ -168,15 +165,8 @@ export function InstalmentForm({ courses, instalment, defaultCourseId, onClose, 
         <Field label="Who pays">{(id) => <Select id={id} value={v.funded_by} onChange={(x) => set('funded_by', x as Instalment['funded_by'])} options={[
           { value: 'trust', label: 'The trust' }, { value: 'self', label: 'The family (self-financed)' },
         ]} />}</Field>
-        <Field label="Rupees">{(id) => <MoneyInput id={id} value={v.amount_lkr} onChange={(x) => set('amount_lkr', x)} />}</Field>
-        <Field label="Foreign currency">{(id) => (
-          <div className="pinline">
-            <MoneyInput id={id} value={v.amount_foreign} onChange={(x) => set('amount_foreign', x)} />
-            <select aria-label="Currency" value={v.foreign_currency} onChange={(e) => set('foreign_currency', e.target.value as Currency)}>
-              {currencyOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-        )}</Field>
+        <Field label="Amount (rupees)">{(id) => <MoneyInput id={id} value={v.amount_lkr} onChange={(x) => set('amount_lkr', x)} />}</Field>
+        {instalment && <LegacyForeign amount={instalment.amount_foreign} currency={instalment.foreign_currency} />}
         <Field label="Status">{(id) => <Select id={id} value={v.status} onChange={(x) => set('status', x as Instalment['status'])} options={[
           { value: 'due', label: 'Still to pay' }, { value: 'paid', label: 'Paid' }, { value: 'cancelled', label: 'Cancelled / not needed' },
         ]} />}</Field>
@@ -198,9 +188,7 @@ export function PaymentForm({ studentId, courses, instalments, trusts, payment, 
   const courseOf = (iid: string) => courses.find((c) => c.id === instalments.find((i) => i.id === iid)?.course_id);
   const [v, set] = useForm({
     paid_on: payment?.paid_on ?? today(), instalment_id: linked?.id ?? '',
-    amount_lkr: payment?.amount_lkr ?? linked?.amount_lkr ?? 0, amount_foreign: payment?.amount_foreign ?? linked?.amount_foreign ?? 0,
-    foreign_currency: (payment?.foreign_currency ?? linked?.foreign_currency ?? courses[0]?.foreign_currency ?? 'GBP') as Currency,
-    fx_rate: payment?.fx_rate ?? null as number | null,
+    amount_lkr: payment?.amount_lkr ?? linked?.amount_lkr ?? 0,
     trust_id: payment?.trust_id ?? (linked ? courseOf(linked.id)?.trust_id : courses[0]?.trust_id) ?? '',
     method: payment?.method ?? 'Bank transfer', paid_to: payment?.paid_to ?? (linked ? courseOf(linked.id)?.institution : courses[0]?.institution) ?? '',
     reference: payment?.reference ?? '', notes: payment?.notes ?? '',
@@ -209,15 +197,12 @@ export function PaymentForm({ studentId, courses, instalments, trusts, payment, 
   const [err, setErr] = useState('');
   const { busy, error, run } = useSaver(onSaved);
   const open = instalments.filter((i) => i.status === 'due' || i.id === linked?.id);
-  const total = v.amount_lkr + v.amount_foreign * (v.fx_rate ?? 0);
 
   const pickInstalment = (iid: string) => {
     set('instalment_id', iid);
     const i = instalments.find((x) => x.id === iid);
     if (i && !payment) {
       set('amount_lkr', i.amount_lkr);
-      set('amount_foreign', i.amount_foreign);
-      if (i.foreign_currency) set('foreign_currency', i.foreign_currency);
       const c = courseOf(iid);
       if (c?.trust_id) set('trust_id', c.trust_id);
       if (c?.institution) set('paid_to', c.institution);
@@ -232,12 +217,11 @@ export function PaymentForm({ studentId, courses, instalments, trusts, payment, 
       <form id="pform" className="pform" noValidate onSubmit={(e) => {
         e.preventDefault();
         if (!v.paid_on) return setErr('When was it paid?');
-        if (!v.amount_lkr && !v.amount_foreign) return setErr('Enter how much was paid.');
+        if (!v.amount_lkr && !payment?.amount_foreign) return setErr('Enter how much was paid.');
         run(() => api.savePayment({
           ...v, id: payment?.id, student_id: studentId, instalment_id: v.instalment_id || null,
           course_id: v.instalment_id ? courseOf(v.instalment_id)?.id ?? null : courses[0]?.id ?? null,
-          trust_id: v.trust_id || null, foreign_currency: v.amount_foreign ? v.foreign_currency : null,
-          fx_rate: v.amount_foreign ? v.fx_rate : null,
+          trust_id: v.trust_id || null,
         } as Partial<Payment>, settle && !!v.instalment_id));
       }}>
         <Field label="Which instalment" wide hint="Choosing one fills in the amounts">{(id) => (
@@ -247,24 +231,8 @@ export function PaymentForm({ studentId, courses, instalments, trusts, payment, 
         <Field label="Date paid">{(id) => <input id={id} type="date" value={v.paid_on} onChange={(e) => set('paid_on', e.target.value)} />}</Field>
         <Field label="Paid by">{(id) => <Select id={id} value={v.trust_id} onChange={(x) => set('trust_id', x)} placeholder="The family / not a trust"
           options={trusts.map((t) => ({ value: t.id, label: t.name }))} />}</Field>
-        <Field label="Rupees paid">{(id) => <MoneyInput id={id} value={v.amount_lkr} onChange={(x) => set('amount_lkr', x)} />}</Field>
-        <Field label="Foreign currency paid">{(id) => (
-          <div className="pinline">
-            <MoneyInput id={id} value={v.amount_foreign} onChange={(x) => set('amount_foreign', x)} />
-            <select aria-label="Currency" value={v.foreign_currency} onChange={(e) => set('foreign_currency', e.target.value as Currency)}>
-              {currencyOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-        )}</Field>
-        {v.amount_foreign > 0 && (
-          <Field label={`Exchange rate (rupees per 1 ${v.foreign_currency})`} hint="The rate on the day — locks in the real cost to the trust">
-            {(id) => <MoneyInput id={id} value={v.fx_rate} onChange={(x) => set('fx_rate', x || null)} placeholder="e.g. 450" />}
-          </Field>
-        )}
-        <div className="pfield ptotal">
-          <span className="label">Cost to the trust</span>
-          <strong>{v.amount_foreign && !v.fx_rate ? `${fmtLkr(v.amount_lkr)} + rate needed` : fmtLkr(total)}</strong>
-        </div>
+        <Field label="Amount paid (rupees)">{(id) => <MoneyInput id={id} value={v.amount_lkr} onChange={(x) => set('amount_lkr', x)} />}</Field>
+        {payment && <LegacyForeign amount={payment.amount_foreign} currency={payment.foreign_currency} />}
         <Field label="Method">{(id) => (
           <>
             <input id={id} list="methods" value={v.method} onChange={(e) => set('method', e.target.value)} />

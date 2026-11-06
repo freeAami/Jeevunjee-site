@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const API = process.env.SUPABASE_API_BASE || 'https://api.supabase.com';
-const SITE_URL = 'https://freeaami.github.io/Jeevunjee-site/';
+const SITE_URL = 'https://jeevunjee.com/';
 const TOKEN_PAGE = 'https://supabase.com/dashboard/account/tokens';
 const OUR_TABLES = ['trusts', 'admin_emails', 'applications', 'students', 'profiles', 'courses', 'instalments', 'payments', 'documents', 'notes'];
 

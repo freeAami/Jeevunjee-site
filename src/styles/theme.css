@@ -405,7 +405,7 @@ textarea.text-input { resize: vertical; line-height: 1.6; }
 .switch input:checked + .track .thumb { transform: translateX(20px); }
 .switch input:focus-visible + .track { outline: 2px solid var(--gold); outline-offset: 3px; }
 .money-grid { display: grid; gap: 10px; }
-.money-head, .money-row { display: grid; grid-template-columns: 1.1fr 1fr 1.2fr; gap: 10px; align-items: center; }
+.money-head, .money-row { display: grid; grid-template-columns: 1.1fr 1fr; gap: 10px; align-items: center; }
 .money-head span { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted-2); }
 .money-label { font-size: 15px; color: var(--fg); }
 .money-foreign { display: flex; gap: 6px; }
@@ -428,7 +428,7 @@ textarea.text-input { resize: vertical; line-height: 1.6; }
   .record { padding: 14px 12px 12px; }
   .record-grid { grid-template-columns: 1fr; }
   .money-head { display: none; }
-  .money-row { grid-template-columns: 1fr 1fr; }
+  .money-row { grid-template-columns: 1fr; }
   .money-row .money-label { grid-column: 1 / -1; font-weight: 500; }
   .money-row.total strong { font-size: 20px; }
   .review button { grid-template-columns: 1fr auto; }

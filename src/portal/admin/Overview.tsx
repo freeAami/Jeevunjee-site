@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { daysFromToday, dueState, fmtAmount, fmtDate, fmtLkr, fmtMixed, relativeDue, sumMixed, today } from '../format';
-import type { Instalment, Overview, Student } from '../types';
-import { Avatar, Badge, Card, Empty, ErrorBox, Loading, StudentName, useAsync, usePortal } from '../ui';
+import { friendlyError } from '../api';
+import { daysFromToday, dueState, fmtAmount, fmtDate, fmtForeign, fmtLkr, fmtMixed, relativeDue, sumMixed, today } from '../format';
+import type { Currency, Instalment, Overview, Student } from '../types';
+import { Avatar, Badge, Button, Card, Empty, ErrorBox, Loading, MoneyInput, StudentName, useAsync, usePortal } from '../ui';
 
 export function OverviewPage() {
   const { api } = usePortal();
@@ -10,10 +11,67 @@ export function OverviewPage() {
 
   if (loading && !data) return <Loading />;
   if (error || !data) return <ErrorBox message={error ?? 'Could not load'} onRetry={reload} />;
-  return <OverviewBody data={data} trustId={trustId} setTrustId={setTrustId} />;
+  return <OverviewBody data={data} trustId={trustId} setTrustId={setTrustId} reload={reload} />;
 }
 
-function OverviewBody({ data, trustId, setTrustId }: { data: Overview; trustId: string; setTrustId: (v: string) => void }) {
+/** Records from before the portal went rupees-only, per currency, that still need a rate. */
+function legacyForeign(data: Overview) {
+  const per = new Map<Currency, { amount: number; rows: number }>();
+  const add = (amount: number, c: Currency | null) => {
+    if (!amount) return;
+    const k = c ?? 'GBP';
+    const cur = per.get(k) ?? { amount: 0, rows: 0 };
+    per.set(k, { amount: cur.amount + amount, rows: cur.rows + 1 });
+  };
+  data.courses.forEach((c) => add(c.total_fee_foreign, c.foreign_currency));
+  data.instalments.forEach((i) => add(i.amount_foreign, i.foreign_currency));
+  data.payments.filter((p) => !p.fx_rate).forEach((p) => add(p.amount_foreign, p.foreign_currency));
+  const rated = data.payments.filter((p) => p.amount_foreign && p.fx_rate).length;
+  return { per, rated };
+}
+
+function ConvertCard({ data, onDone }: { data: Overview; onDone: () => void }) {
+  const { api } = usePortal();
+  const { per, rated } = legacyForeign(data);
+  const [rates, setRates] = useState<Record<string, number>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  if (!per.size && !rated) return null;
+  const ready = [...per.keys()].every((c) => (rates[c] ?? 0) > 0);
+  return (
+    <Card title="Convert old amounts to rupees">
+      <p className="pmuted">
+        The portal now uses rupees only. Some records from before still have a part in another currency. Enter today’s
+        rate once and they’ll all be folded into rupees. Each record keeps a note of what it was.
+        {rated ? ` ${rated} payment${rated === 1 ? '' : 's'} already ha${rated === 1 ? 's its' : 've their'} own rate and will use it.` : ''}
+      </p>
+      <div className="pconvert">
+        {[...per].map(([c, v]) => (
+          <label key={c} className="pfield">
+            <span className="label">{fmtForeign(v.amount, c)} across {v.rows} record{v.rows === 1 ? '' : 's'} · rupees per 1 {c}</span>
+            <MoneyInput id={`rate-${c}`} value={rates[c] ?? null} onChange={(x) => setRates((r) => ({ ...r, [c]: x }))} placeholder="e.g. 390" />
+          </label>
+        ))}
+      </div>
+      <Button variant="primary" disabled={busy || !ready} onClick={async () => {
+        if (!confirm('Convert these amounts to rupees? This can’t be undone, but each record keeps a note of the old amount.')) return;
+        setBusy(true);
+        setError('');
+        try {
+          await api.convertToRupees(Object.fromEntries([...per.keys()].map((c) => [c, rates[c]])));
+          onDone();
+        } catch (e) {
+          setError(friendlyError(e));
+        } finally {
+          setBusy(false);
+        }
+      }}>{busy ? 'Converting…' : 'Convert to rupees'}</Button>
+      {error && <p className="perror" role="alert">{error}</p>}
+    </Card>
+  );
+}
+
+function OverviewBody({ data, trustId, setTrustId, reload }: { data: Overview; trustId: string; setTrustId: (v: string) => void; reload: () => void }) {
   const v = useMemo(() => {
     const courseTrust = new Map(data.courses.map((c) => [c.id, c.trust_id]));
     const student = new Map(data.students.map((s) => [s.id, s]));
@@ -76,8 +134,8 @@ function OverviewBody({ data, trustId, setTrustId }: { data: Overview; trustId: 
           <span className="value">{fmtLkr(v.paidLkr)}</span>
           <span className="foot">
             {v.unconverted.foreign.size
-              ? `+ ${fmtMixed(v.unconverted)} without a recorded rate`
-              : 'Rupee cost to the trust, at the rates on the day'}
+              ? `+ ${fmtMixed(v.unconverted)} still to convert`
+              : 'Paid by the trusts this year'}
           </span>
         </div>
         <div className="pstat">
@@ -97,6 +155,8 @@ function OverviewBody({ data, trustId, setTrustId }: { data: Overview; trustId: 
         </a>
       </div>
 
+      <ConvertCard data={data} onDone={reload} />
+
       <div className="pgrid-2">
         <Card title="Needs attention">
           {v.overdue.length || v.unscheduled.length ? (
@@ -115,7 +175,7 @@ function OverviewBody({ data, trustId, setTrustId }: { data: Overview; trustId: 
           <div className="ptable-wrap">
             <table className="ptable">
               <thead>
-                <tr><th>Date</th><th>Student</th><th>Amount</th><th className="num">Cost in rupees</th><th>Paid to</th></tr>
+                <tr><th>Date</th><th>Student</th><th className="num">Amount</th><th>Paid to</th></tr>
               </thead>
               <tbody>
                 {v.recent.map((p) => {
@@ -124,8 +184,7 @@ function OverviewBody({ data, trustId, setTrustId }: { data: Overview; trustId: 
                     <tr key={p.id}>
                       <td>{fmtDate(p.paid_on)}</td>
                       <td>{s ? <a href={`#/portal/students/${s.id}`}><StudentName student={s} /></a> : '—'}</td>
-                      <td>{fmtAmount(p.amount_lkr, p.amount_foreign, p.foreign_currency)}</td>
-                      <td className="num">{p.amount_foreign && !p.fx_rate ? <Badge tone="soon">No rate</Badge> : fmtLkr(p.total_lkr)}</td>
+                      <td className="num">{p.amount_foreign && !p.fx_rate ? fmtAmount(p.amount_lkr, p.amount_foreign, p.foreign_currency) : fmtLkr(p.total_lkr)}</td>
                       <td>{p.paid_to || '—'}</td>
                     </tr>
                   );
@@ -156,7 +215,7 @@ function DueList({ items, student }: { items: Instalment[]; student: Map<string,
                 <span className="what">{i.label}</span>
               </span>
               <span className="amt">
-                {fmtAmount(i.amount_lkr, i.amount_foreign, i.foreign_currency)}
+                {i.amount_foreign ? fmtAmount(i.amount_lkr, i.amount_foreign, i.foreign_currency) : fmtLkr(i.amount_lkr)}
                 <Badge tone={state === 'overdue' ? 'overdue' : state === 'soon' ? 'soon' : 'neutral'}>{relativeDue(i.due_date)}</Badge>
               </span>
             </a>

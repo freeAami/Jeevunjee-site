@@ -259,3 +259,35 @@
 
 /* buttons placed directly in a card keep their natural width */
 .pcard > .pbtn, .pcard > form > .pbtn { align-self: flex-start; }
+
+/* ---- photos & receipts for each payment step (Nov 2026) ---- */
+.pproof { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.psteps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.psteps > li { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 12px; align-items: start; border: 1px solid var(--p-line); border-radius: 12px; padding: 12px 14px; }
+.psteps > li.done { background: var(--p-paid-bg); border-color: transparent; }
+.pstep-n { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 600; background: var(--bg); border: 1px solid var(--border-2); }
+.psteps > li.done .pstep-n { background: var(--p-paid); color: #fff; border-color: var(--p-paid); }
+.pstep-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pstep-main .pdocs { margin-top: 6px; }
+.psteps label.pbtn { cursor: pointer; align-self: center; }
+.psteps input:disabled + label.pbtn { opacity: 0.55; cursor: progress; }
+.psteps input:focus-visible + label.pbtn { outline: 2px solid var(--gold); outline-offset: 2px; }
+.pconvert { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+@media (max-width: 560px) {
+  .psteps > li { grid-template-columns: 28px minmax(0, 1fr); }
+  .psteps label.pbtn { grid-column: 2; justify-self: start; }
+}
+
+/* On phones, schedule and history tables become one card per row, so the photo buttons stay in reach. */
+@media (max-width: 640px) {
+  .ptable.pstack thead { display: none; }
+  .ptable.pstack, .ptable.pstack tbody, .ptable.pstack tr, .ptable.pstack td { display: block; width: 100%; }
+  .ptable.pstack tr { padding: 12px 0; border-bottom: 1px solid var(--p-line); }
+  .ptable.pstack td { border: 0; padding: 3px 0; text-align: left; }
+  .ptable.pstack td[data-label] { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: center; }
+  .ptable.pstack td[data-label]::before { content: attr(data-label); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted-2, var(--muted)); }
+  .ptable.pstack td.num { text-align: left; }
+  .ptable.pstack td.pstack-title { font-weight: 600; font-size: 15px; padding-bottom: 6px; }
+  .ptable.pstack td.pactions { display: flex; gap: 8px; padding-top: 8px; }
+}
+@media (max-width: 640px) { .ptable.pstack td[data-label] > * { justify-self: start; } }

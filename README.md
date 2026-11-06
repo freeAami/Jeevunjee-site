@@ -9,7 +9,7 @@ React 19 + Vite + TypeScript site for the Jeevunjee Family Scholarship, with a t
   with the exchange rate locked per payment), documents and notes. Students sign in with a one-time access code
   to see their own schedule and upload invoices and results.
 
-**Live:** https://freeaami.github.io/Jeevunjee-site/
+**Live:** https://jeevunjee.com
 
 ```bash
 npm install
