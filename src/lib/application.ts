@@ -80,7 +80,17 @@ export function requested(a: Answers) {
 const DRAFT_KEY = 'jvj-application-draft-v2';
 /** A draft left on a shared or borrowed device shouldn't sit there forever. */
 const DRAFT_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
-export type Draft = { answers: Answers; scene: number };
+/** `hadForeign`: the draft was saved when the form still took a second currency; those amounts were dropped. */
+export type Draft = { answers: Answers; scene: number; hadForeign?: boolean };
+
+/** The form is rupees-only now: never keep or send the old second-currency amounts. */
+function withoutForeign(a: Answers): Answers {
+  return { ...a, totalFeeForeign: '', selfFinancedForeign: '', plan: a.plan.map((p) => ({ ...p, amountForeign: '' })) };
+}
+
+function hasForeign(a: Answers) {
+  return Boolean(toNumber(a.totalFeeForeign) || toNumber(a.selfFinancedForeign) || a.plan.some((p) => toNumber(p.amountForeign)));
+}
 
 export function loadDraft(total: number): Draft | null {
   try {
@@ -92,8 +102,10 @@ export function loadDraft(total: number): Draft | null {
       return null;
     }
     if (!d.answers || typeof d.scene !== 'number') return null;
-    const answers = { ...emptyAnswers(), ...d.answers, declTruthful: false, declWilling: false, declInterview: false };
-    return { answers, scene: Math.min(Math.max(1, d.scene), total) };
+    const saved = { ...emptyAnswers(), ...d.answers, declTruthful: false, declWilling: false, declInterview: false };
+    if (!Array.isArray(saved.plan)) saved.plan = emptyAnswers().plan;
+    const hadForeign = hasForeign(saved);
+    return { answers: withoutForeign(saved), scene: Math.min(Math.max(1, d.scene), total), hadForeign };
   } catch {
     return null;
   }
@@ -153,11 +165,12 @@ function uploadsFor(a: Answers, f: Files): Upload[] {
 }
 
 /** Keep only education rows and plan rows that have something in them. */
-function tidy(a: Answers): Answers {
+function tidy(raw: Answers): Answers {
+  const a = withoutForeign(raw);
   return {
     ...a,
     education: a.education.filter((e) => e.level || e.year || e.results || e.school),
-    plan: a.plan.filter((p) => p.label || p.amountLkr || p.amountForeign || p.when),
+    plan: a.plan.filter((p) => p.label || p.amountLkr || p.when),
   };
 }
 
