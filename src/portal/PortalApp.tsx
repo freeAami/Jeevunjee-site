@@ -6,6 +6,7 @@ import { Applications, ApplicationView } from './admin/Applications';
 import { OverviewPage } from './admin/Overview';
 import { StudentFile } from './admin/StudentFile';
 import { StudentsPage } from './admin/Students';
+import { TrusteesPage } from './admin/Trustees';
 import { Login, SetNewPassword } from './Login';
 import { Button, Loading, PortalContext, navigateTo } from './ui';
 import type { Profile } from './types';
@@ -91,6 +92,7 @@ export default function PortalApp({ route }: { route: string }) {
   else if (parts[0] === 'students') page = <StudentsPage />;
   else if (parts[0] === 'applications' && parts[1]) page = <ApplicationView id={parts[1]} key={parts[1]} />;
   else if (parts[0] === 'applications') page = <Applications />;
+  else if (parts[0] === 'trustees') page = <TrusteesPage />;
   else page = <OverviewPage />;
 
   const nav = isAdmin
@@ -98,6 +100,7 @@ export default function PortalApp({ route }: { route: string }) {
         { href: '#/portal', label: 'Overview', active: !parts[0] },
         { href: '#/portal/students', label: 'Students', active: parts[0] === 'students' },
         { href: '#/portal/applications', label: 'Applications', active: parts[0] === 'applications' },
+        { href: '#/portal/trustees', label: 'Trustees', active: parts[0] === 'trustees' },
       ]
     : [{ href: '#/portal', label: 'My file', active: true }];
 

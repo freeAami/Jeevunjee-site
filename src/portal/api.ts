@@ -3,7 +3,7 @@ import { finalName, safeFileName, shrinkImage, shrinkPhoto } from '../lib/files'
 import { getSupabase } from '../lib/supabase';
 import type {
   Application, Course, DocCategory, DocLink, DocumentRec, Instalment, Note, Overview, Payment, Profile, Student, StudentBundle,
-  Trust,
+  Trust, TrusteesPage,
 } from './types';
 
 export type Session = { userId: string; email: string };
@@ -15,7 +15,9 @@ export interface PortalApi {
   getSession(): Promise<Session | null>;
   onAuthChange(cb: (event: string) => void): () => void;
   signIn(email: string, password: string): Promise<void>;
-  signUp(email: string, password: string, accessCode: string): Promise<void>;
+  signUp(email: string, password: string, accessCode: string, fullName?: string): Promise<void>;
+  /** Whether a trustee invite code is valid and unused, before asking for an email and password. */
+  checkTrusteeCode(code: string): Promise<boolean>;
   signOut(): Promise<void>;
   sendPasswordReset(email: string): Promise<void>;
   updatePassword(password: string): Promise<void>;
@@ -39,6 +41,10 @@ export interface PortalApi {
   addNote(studentId: string, body: string, authorName: string): Promise<void>;
   deleteNote(id: string): Promise<void>;
   issueAccessCode(studentId: string): Promise<string>;
+  loadTrustees(): Promise<TrusteesPage>;
+  /** One-time code (7 days) that lets whoever holds it link their own email as a trustee. */
+  createTrusteeInvite(label: string): Promise<string>;
+  cancelTrusteeInvite(id: string): Promise<void>;
   loadApplications(): Promise<Application[]>;
   updateApplication(id: string, patch: Partial<Pick<Application, 'status' | 'review_notes'>>): Promise<void>;
   enrolApplication(id: string, trustId: string): Promise<string>;
@@ -131,12 +137,12 @@ export function createLiveApi(): PortalApi {
         ensure(await c.auth.signInWithPassword({ email: email.trim(), password }));
       }),
 
-    signUp: (email, password, accessCode) =>
+    signUp: (email, password, accessCode, fullName) =>
       withSb(async (c) => {
         const res = await c.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: { access_code: accessCode.trim() } },
+          options: { data: { access_code: accessCode.trim(), ...(fullName?.trim() ? { full_name: fullName.trim() } : {}) } },
         });
         ensure(res);
         if (!res.data.session) {
@@ -145,6 +151,9 @@ export function createLiveApi(): PortalApi {
           ensure(await c.auth.signInWithPassword({ email: email.trim(), password }));
         }
       }),
+
+    checkTrusteeCode: (code) =>
+      withSb(async (c) => check(await c.rpc('trustee_code_ok', { p_code: code })) as boolean),
 
     signOut: () => withSb(async (c) => void (await c.auth.signOut())),
 
@@ -285,6 +294,24 @@ export function createLiveApi(): PortalApi {
 
     issueAccessCode: (studentId) =>
       withSb(async (c) => check(await c.rpc('issue_access_code', { p_student: studentId })) as string),
+
+    loadTrustees: () =>
+      withSb(async (c) => {
+        const [t, i] = await Promise.all([
+          c.from('profiles').select('id, role, student_id, email, full_name, created_at').eq('role', 'admin').order('created_at'),
+          c.from('trustee_invites').select('id, code, label, created_at, expires_at, used_at, used_email').order('created_at', { ascending: false }).limit(200),
+        ]);
+        return { trustees: check(t) as Profile[], invites: check(i) as TrusteesPage['invites'] };
+      }),
+
+    createTrusteeInvite: (label) =>
+      withSb(async (c) => check(await c.rpc('issue_trustee_invite', { p_label: label })) as string),
+
+    cancelTrusteeInvite: (id) =>
+      withSb(async (c) => {
+        const gone = check(await c.from('trustee_invites').delete().eq('id', id).is('used_at', null).select('id')) as unknown[];
+        if (!gone.length) throw new Error('That code has already been used, so it can’t be cancelled.');
+      }),
 
     loadApplications: () =>
       withSb(async (c) => check(await c.from('applications').select('*').order('created_at', { ascending: false }).limit(500)) as Application[]),

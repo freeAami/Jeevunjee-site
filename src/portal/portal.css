@@ -294,3 +294,11 @@
 
 /* Press feedback on portal buttons (Nov 2026). */
 .pbtn:active:not(:disabled) { transform: scale(0.97); transition-duration: 100ms; }
+.pinvite-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.pinvite-form .pfield { flex: 1 1 260px; }
+.pinvite-form .pbtn { margin-bottom: 22px; }
+.ptrustees { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ptrustees li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--p-line); flex-wrap: wrap; }
+.ptrustees li:first-child { border-top: none; }
+.ptrustees .main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.plogin-step { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0; }
