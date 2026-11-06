@@ -33,17 +33,19 @@ This creates the database, the two trusts, the private file storage, and the rul
 - A student sees only their own file.
 - The public can only send an application.
 
-## 3. Register the trustees
+## 3. Make the first trustee code
 
-For each trustee, run this in a **new** SQL query (with their real email):
+Run this in a **new** SQL query (the text is just a label for who the code is for):
 
 ```sql
-select public.issue_trustee_code('trustee@example.com');
+select public.issue_trustee_invite('First trustee');
 ```
 
-It returns a one-time **trustee code** (valid 7 days). Give it to that trustee privately (phone or WhatsApp, not a
-public group). A trustee login needs **both** the email and its code, so knowing a trustee's address is never
-enough to sign up as them. If a code expires, just run the line again for a new one.
+It returns a one-time **trustee code** (valid 7 days). Whoever enters it links their own email as a trustee, so give
+it privately (phone or WhatsApp, not a public group). If a code expires, run the line again for a new one.
+
+After that, trustees add the others from the portal: **Trustees → Invite a trustee** makes a code and a message to
+send. The older email-bound route still works: `select public.issue_trustee_code('trustee@example.com');`.
 
 ## 4. Two settings in Authentication
 
@@ -73,8 +75,8 @@ lists them at the top (possible duplicate names, due dates, exchange rates).
 
 ## 7. Trustees create their logins
 
-Once the site is connected, each trustee opens the site → **Sign in** → **First time here? Create your login** →
-enters their email, a password and the trustee code from step 3.
+Once the site is connected, each trustee opens the site → **Sign in** → **I have a trustee code** → enters the
+code, then their name, email and a password. The login lasts until it is deleted; the code is only for joining.
 
 **If you ran an older version of this guide:** run the whole of `schema.sql` again (it is safe to re-run), then
 check who already holds a trustee login:

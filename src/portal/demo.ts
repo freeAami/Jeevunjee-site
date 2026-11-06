@@ -2,10 +2,10 @@
 // Used until Supabase is connected, so the trustees can try it out. Nothing here is real.
 import type { PortalApi, Session } from './api';
 import type {
-  Application, Course, DocumentRec, Instalment, Note, Overview, Payment, Profile, Student, Trust,
+  Application, Course, DocumentRec, Instalment, Note, Overview, Payment, Profile, Student, Trust, TrusteeInvite,
 } from './types';
 
-type Db = Overview & { documents: DocumentRec[]; notes: Note[]; profiles: Profile[] };
+type Db = Overview & { documents: DocumentRec[]; notes: Note[]; profiles: Profile[]; trusteeInvites?: TrusteeInvite[] };
 
 const KEY = 'jvj-demo-data-v2';
 const SESSION_KEY = 'jvj-demo-session';
@@ -200,6 +200,9 @@ export function createDemoApi(): PortalApi {
     async signUp() {
       throw new Error('Creating accounts works once the portal is connected to Supabase.');
     },
+    async checkTrusteeCode() {
+      throw new Error('Trustee codes work once the portal is connected to Supabase.');
+    },
     async signOut() {
       sessionStorage.removeItem(SESSION_KEY);
       emit('SIGNED_OUT');
@@ -356,6 +359,25 @@ export function createDemoApi(): PortalApi {
       s.access_code_expires = new Date(Date.now() + 14 * 86400000).toISOString();
       save();
       return code;
+    },
+    loadTrustees: () =>
+      wait(structuredClone({
+        trustees: [{ id: 'demo-admin', role: 'admin', student_id: null, email: 'trustee@preview', full_name: 'Trustee (preview)', created_at: now() }] as Profile[],
+        invites: db.trusteeInvites ?? [],
+      })),
+    async createTrusteeInvite(label) {
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const code = Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => alphabet[b % 32]).join('');
+      db.trusteeInvites = [
+        { id: id(), code, label, created_at: now(), expires_at: new Date(Date.now() + 7 * 86400000).toISOString(), used_at: null, used_email: null },
+        ...(db.trusteeInvites ?? []),
+      ];
+      save();
+      return code;
+    },
+    async cancelTrusteeInvite(iid) {
+      db.trusteeInvites = (db.trusteeInvites ?? []).filter((i) => i.id !== iid || i.used_at);
+      save();
     },
     loadApplications: () => wait(structuredClone(db.applications)),
     async updateApplication(aid, patch) {

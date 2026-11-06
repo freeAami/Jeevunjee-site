@@ -29,6 +29,22 @@ create table if not exists public.admin_emails (
 alter table public.admin_emails add column if not exists invite_code text;
 alter table public.admin_emails add column if not exists invite_expires timestamptz;
 
+-- ---------- trustee invites (the usual way to add a trustee) -------------------------------------------
+-- A trustee creates a one-time code in the portal (Trustees page). Whoever holds it can link their own email as a
+-- trustee login, once, within 7 days. Codes are only created by trustees or the project owner and never listed
+-- to the public; used invites stay as a record of who joined and from which code.
+create table if not exists public.trustee_invites (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique,
+  label text not null,
+  created_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  used_by uuid references auth.users (id) on delete set null,
+  used_email text
+);
+
 -- ---------- applications from the public website -----------------------------------------------------
 create table if not exists public.applications (
   id uuid primary key default gen_random_uuid(),
@@ -274,7 +290,20 @@ declare
   v_code text := upper(replace(trim(coalesce(new.raw_user_meta_data ->> 'access_code', '')), '-', ''));
   v_student public.students%rowtype;
 begin
-  -- Trustee: the email must be on the list AND the matching one-time trustee code must be given.
+  -- Trustee invite: a valid, unused code from the Trustees page makes this login a trustee, whatever its email.
+  if v_code <> '' then
+    update public.trustee_invites set used_at = now(), used_by = new.id, used_email = lower(new.email)
+      where code = v_code and used_at is null and expires_at > now();
+    if found then
+      update public.admin_emails set claimed = true, invite_code = null, invite_expires = null
+        where lower(email) = lower(new.email);
+      insert into public.profiles (id, role, email, full_name)
+        values (new.id, 'admin', new.email, nullif(trim(new.raw_user_meta_data ->> 'full_name'), ''));
+      return new;
+    end if;
+  end if;
+
+  -- Trustee (older route): the email must be on the list AND the matching one-time trustee code must be given.
   if exists (select 1 from public.admin_emails where lower(email) = lower(new.email)) then
     if v_code <> '' and exists (select 1 from public.admin_emails
                                 where lower(email) = lower(new.email) and not claimed
@@ -346,6 +375,37 @@ begin
                                     invite_expires = excluded.invite_expires;
   return v;
 end $$;
+
+-- One-time trustee invite (valid 7 days), not tied to an email: the person who receives it links their own.
+-- Created from the portal's Trustees page, or by the project owner in the SQL editor:
+--   select public.issue_trustee_invite('For Imran');
+create or replace function public.issue_trustee_invite(p_label text) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v text;
+  l text := left(trim(coalesce(p_label, '')), 100);
+begin
+  if not (public.is_admin() or coalesce(current_setting('request.jwt.claims', true), '') = '') then
+    raise exception 'not allowed';
+  end if;
+  if l = '' then raise exception 'say who the invite is for'; end if;
+  loop
+    v := public.random_code(10);
+    exit when not exists (select 1 from public.trustee_invites where code = v)
+          and not exists (select 1 from public.admin_emails where invite_code = v);
+  end loop;
+  insert into public.trustee_invites (code, label, created_by, expires_at)
+    values (v, l, auth.uid(), now() + interval '7 days');
+  return v;
+end $$;
+
+-- Lets the "I have a trustee code" screen say whether a code works before asking for an email and password.
+-- Answers only yes/no; codes are 10 characters from 32, far too many to guess.
+create or replace function public.trustee_code_ok(p_code text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.trustee_invites
+                 where code = upper(replace(trim(coalesce(p_code, '')), '-', '')) and used_at is null and expires_at > now());
+$$;
 
 -- =====================================================================================================
 -- Public application submission. The website calls this; the public can never read applications back.
@@ -624,6 +684,7 @@ end $$;
 
 alter table public.trusts enable row level security;
 alter table public.admin_emails enable row level security;
+alter table public.trustee_invites enable row level security;
 alter table public.applications enable row level security;
 alter table public.students enable row level security;
 alter table public.profiles enable row level security;
@@ -645,6 +706,8 @@ end $$;
 drop policy if exists "signed-in read" on public.trusts;
 drop policy if exists "read own profile" on public.profiles;
 drop policy if exists "student uploads own" on public.documents;
+drop policy if exists "admin reads" on public.trustee_invites;
+drop policy if exists "admin cancels unused" on public.trustee_invites;
 
 -- trustees: everything
 create policy "admin all" on public.trusts       for all to authenticated using (public.is_admin()) with check (public.is_admin());
@@ -656,6 +719,9 @@ create policy "admin all" on public.instalments  for all to authenticated using 
 create policy "admin all" on public.payments     for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin all" on public.documents    for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin all" on public.notes        for all to authenticated using (public.is_admin()) with check (public.is_admin());
+-- trustee invites: trustees see them and may cancel unused ones; codes are only made by issue_trustee_invite
+create policy "admin reads" on public.trustee_invites for select to authenticated using (public.is_admin());
+create policy "admin cancels unused" on public.trustee_invites for delete to authenticated using (public.is_admin() and used_at is null);
 
 -- everyone signed in: trust names and their own login record
 create policy "signed-in read" on public.trusts for select to authenticated using (true);
@@ -690,6 +756,9 @@ revoke execute on function public.forget_deleted_document() from public, anon, a
 revoke execute on function public.check_document_link() from public, anon, authenticated;
 revoke execute on function public.convert_to_rupees(jsonb) from public, anon;
 revoke execute on function public.random_code(int) from anon, authenticated, public;
+revoke execute on function public.issue_trustee_invite(text) from public, anon;
+grant execute on function public.issue_trustee_invite(text) to authenticated;
+grant execute on function public.trustee_code_ok(text) to anon, authenticated;
 grant execute on function public.submit_application(jsonb, jsonb, text) to anon, authenticated;
 grant execute on function public.claim_notification(text, text) to anon, authenticated;
 grant execute on function public.application_upload_ok(text) to anon, authenticated;

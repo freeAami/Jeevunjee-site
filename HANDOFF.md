@@ -75,13 +75,14 @@ project started, what exists now, why it is built this way, what is unfinished, 
 - Students see only their own file and can upload invoices, results and receipts.
 
 ### Database (`supabase/schema.sql`, safe to re-run)
-- **Tables:** `trusts`, `admin_emails`, `applications`, `students`, `profiles`, `courses`, `instalments`, `payments`,
+- **Tables:** `trusts`, `admin_emails`, `trustee_invites`, `applications`, `students`, `profiles`, `courses`, `instalments`, `payments`,
   `documents`, `notes`.
 - **Row-level security on everything.** Trustees (`is_admin()`) see and edit all of it. A student reads only their
   own rows (`my_student_id()`). The public can only call `submit_application` and upload into fresh folders.
 - **Sign-up trigger `handle_new_user`.** It refuses every sign-up unless one of these holds:
-  - **Trustee:** a listed email **and** its one-time trustee code (`issue_trustee_code(email)`, run in the SQL
-    editor, valid 7 days, single use).
+  - **Trustee:** a one-time trustee invite (`issue_trustee_invite(label)`, made on the portal's Trustees page or in the
+    SQL editor, valid 7 days, single use); the holder links their own email. Older route: a listed email **and** its
+    one-time code (`issue_trustee_code(email)`).
   - **Student:** a one-time access code issued by a trustee (valid 14 days, single use).
 - **Main functions:**
   - `submit_application`: validates input, rate-limits to 15 per hour and 60 per day, and only accepts files that were

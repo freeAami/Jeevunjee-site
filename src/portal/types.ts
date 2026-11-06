@@ -180,3 +180,15 @@ export type StudentBundle = {
   logins: Profile[];
   trusts: Trust[];
 };
+
+export type TrusteeInvite = {
+  id: string;
+  code: string;
+  label: string;
+  created_at: string;
+  expires_at: string;
+  used_at: string | null;
+  used_email: string | null;
+};
+
+export type TrusteesPage = { trustees: Profile[]; invites: TrusteeInvite[] };
