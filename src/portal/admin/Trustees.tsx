@@ -148,6 +148,7 @@ export function TrusteesPage() {
                       if (st === 'open' && !confirm(`Cancel the code for ${i.label}? It will stop working straight away.`)) return;
                       try {
                         await api.cancelTrusteeInvite(i.id);
+                        if (made?.code === i.code) setMade(null);
                       } catch (e) {
                         alert(friendlyError(e));
                       }

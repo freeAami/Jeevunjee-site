@@ -166,11 +166,11 @@ export function createDemoApi(): PortalApi {
     list.push(created);
     return created;
   };
+  // A blob: link, because browsers refuse to open data: links in a new tab.
   const placeholder = (title: string) =>
-    'data:image/svg+xml;charset=utf-8,' +
-    encodeURIComponent(
+    URL.createObjectURL(new Blob([
       `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="100%" height="100%" fill="#F8F6F0"/><text x="50%" y="46%" text-anchor="middle" font-family="sans-serif" font-size="28" fill="#3A362D">${title.replace(/[<&>]/g, '')}</text><text x="50%" y="56%" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#6F6F6F">Preview mode — sample document</text></svg>`,
-    );
+    ], { type: 'image/svg+xml' }));
   const addFile = (studentId: string, file: File) => {
     const path = `students/${studentId}/${id()}-${file.name}`;
     files.set(path, URL.createObjectURL(file));

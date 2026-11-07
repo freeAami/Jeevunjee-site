@@ -365,7 +365,7 @@ export function Journey({ onClose }: { onClose: () => void }) {
                   optional={a.institutionUndecided} value={a.institution} onChange={(v) => set('institution', v)}
                   placeholder={a.institutionUndecided ? 'e.g. SLIIT or IIT' : 'e.g. SLIIT Academy'} error={errFor('institution')} />
                 <Switch id="institutionUndecided" label="Not decided yet" checked={a.institutionUndecided}
-                  onChange={(v) => set('institutionUndecided', v)} />
+                  onChange={(v) => { set('institutionUndecided', v); setError((e) => (e?.field === 'institution' ? null : e)); }} />
               </div>
               <TextField id="awardingBody" label="Awarding university" optional value={a.awardingBody} onChange={(v) => set('awardingBody', v)}
                 placeholder="e.g. Liverpool John Moores University" />
