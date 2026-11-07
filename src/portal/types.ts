@@ -9,6 +9,7 @@ export type Profile = {
   email: string | null;
   full_name: string | null;
   created_at?: string;
+  can_invite?: boolean;
 };
 
 export type Trust = { id: string; name: string };

@@ -25,7 +25,7 @@ export function TrusteesPage() {
 
   const portalUrl = `${location.origin}${location.pathname}#/portal`;
   const message = made
-    ? `Salaam ${made.label.replace(/^for\s+/i, '')}, you've been invited to the Jeevunjee trustee portal.\n\n1. Open ${portalUrl}\n2. Tap "I have a trustee code"\n3. Enter this code: ${pretty(made.code)}\n4. Enter your name and email and choose a password.\n\nThe code works once and expires in 7 days. After that you sign in with your email and password.`
+    ? `Salaam ${made.label.replace(/^for\s+/i, '')}, you've been invited to the Jeevunjee trustee portal.\n\n1. Open ${portalUrl}\n2. Tap "I have a trustee code"\n3. Enter this code: ${pretty(made.code)}\n4. Enter your name and email and choose a password.\n\nThe code works once and expires in 48 hours. After that you sign in with your email and password.`
     : '';
 
   const create = async () => {
@@ -57,10 +57,19 @@ export function TrusteesPage() {
         </div>
       </header>
 
+      {!profile.can_invite ? (
+        <Card title="Invite a trustee">
+          <p className="pmuted">
+            Only the portal owner can make trustee codes. Ask them if someone new should join. Everyone here gets an email
+            whenever a new trustee joins.
+          </p>
+        </Card>
+      ) : (
       <Card title="Invite a trustee">
         <p className="pmuted">
           Make a one-time code and send it privately. The person opens the portal, taps “I have a trustee code”, and links
-          their own email and password. The code works once and expires after 7 days.
+          their own email and password. The code works once and expires after 48 hours. The other trustees get an email
+          when someone joins.
         </p>
         <div className="pinvite-form">
           <Field label="Who is it for?" hint="Only trustees see this, to keep track of codes.">
@@ -74,7 +83,7 @@ export function TrusteesPage() {
           <div className="paccess">
             <span className="label">Trustee code for {made.label}</span>
             <span className="code">{pretty(made.code)}</span>
-            <span className="pmuted small">Works once · expires {fmtDate(new Date(Date.now() + 7 * 86400000).toISOString())}</span>
+            <span className="pmuted small">Works once · expires {fmtDate(new Date(Date.now() + 48 * 3600000).toISOString())}</span>
             <label className="sr-only" htmlFor="tmsg">Message to send</label>
             <textarea id="tmsg" readOnly rows={8} value={message} />
             <div className="prow-actions">
@@ -93,6 +102,7 @@ export function TrusteesPage() {
           </div>
         )}
       </Card>
+      )}
 
       <Card title={`Trustees with a login (${data.trustees.length})`}>
         {data.trustees.length ? (

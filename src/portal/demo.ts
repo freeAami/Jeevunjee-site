@@ -215,7 +215,7 @@ export function createDemoApi(): PortalApi {
       const s = session();
       if (!s) return null;
       return s.role === 'admin'
-        ? { id: 'demo-admin', role: 'admin', student_id: null, email: 'trustee@preview', full_name: 'Trustee (preview)' }
+        ? { id: 'demo-admin', role: 'admin', student_id: null, email: 'trustee@preview', full_name: 'Trustee (preview)', can_invite: true }
         : { id: 'demo-student', role: 'student', student_id: s.studentId ?? null, email: 'student@preview', full_name: null };
     },
     loadOverview: () => wait(structuredClone({ ...db, documents: undefined, notes: undefined, profiles: undefined }) as Overview),
@@ -330,6 +330,9 @@ export function createDemoApi(): PortalApi {
       db.documents = db.documents.filter((d) => d.id !== doc.id);
       save();
     },
+    loadPaymentProof: () =>
+      wait(structuredClone(db.documents.filter((d) => ['invoice', 'cheque', 'receipt'].includes(d.category))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at)))),
     async fileUrl(_bucket, path) {
       return files.get(path) ?? placeholder(path.split('/').pop()?.replace(/^[0-9a-f-]{36}-/, '') ?? 'Document');
     },
@@ -369,7 +372,7 @@ export function createDemoApi(): PortalApi {
       const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       const code = Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => alphabet[b % 32]).join('');
       db.trusteeInvites = [
-        { id: id(), code, label, created_at: now(), expires_at: new Date(Date.now() + 7 * 86400000).toISOString(), used_at: null, used_email: null },
+        { id: id(), code, label, created_at: now(), expires_at: new Date(Date.now() + 48 * 3600000).toISOString(), used_at: null, used_email: null },
         ...(db.trusteeInvites ?? []),
       ];
       save();

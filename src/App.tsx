@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Botanicals, CursorGlow } from './components/Ambient';
 import { Hero } from './components/Hero';
 import { Nav } from './components/Nav';
+import { Privacy } from './components/Privacy';
 import { ApplyBand, Family, Footer, HowItWorks, Mission, WhoWeSupport } from './components/Sections';
 import { Journey } from './journey/Journey';
 
@@ -9,7 +10,9 @@ import { Journey } from './journey/Journey';
 const PortalApp = lazy(() => import('./portal/PortalApp'));
 
 function useHashRoute() {
-  const read = () => (location.hash.startsWith('#/portal') ? location.hash.slice('#/portal'.length) || '/' : null);
+  const read = () =>
+    location.hash.startsWith('#/portal') ? location.hash.slice('#/portal'.length) || '/'
+    : location.hash.startsWith('#/privacy') ? '#privacy' : null;
   const [route, setRoute] = useState(read);
   useEffect(() => {
     const on = () => {
@@ -44,6 +47,8 @@ export default function App() {
     document.body.classList.toggle('journey-lock', journeyOpen);
     if (!journeyOpen) opener.current?.focus({ preventScroll: true });
   }, [journeyOpen]);
+
+  if (route === '#privacy') return <Privacy />;
 
   if (route !== null) {
     return (

@@ -11,6 +11,10 @@
  *   4. optionally sends the applicant a short confirmation.
  * Documents stay in the portal; nothing is saved to Drive. Daily email limits stop it ever using up the mail quota.
  *
+ * Every hour (once setupMailer has been run) it also asks the database for
+ *   - payment reminders: each student is emailed a week before a payment is due, the day before, and if it is overdue;
+ *   - new trustees: when someone joins as a trustee, the other trustees are emailed so nobody joins unnoticed.
+ *
  * Setup steps are in SETUP.md next to this file.
  */
 
@@ -37,6 +41,14 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 /** Safety limits per day. A small trust gets a handful of applications a week. */
 const MAX_TRUSTEE_EMAILS_PER_DAY = 25;
 const MAX_APPLICANT_EMAILS_PER_DAY = 20;
+const MAX_REMINDER_EMAILS_PER_DAY = 40;
+const MAX_NEW_TRUSTEE_EMAILS_PER_DAY = 10;
+
+/** Email students before their payments are due. Needs MAILER_KEY in Project Settings → Script properties. */
+const SEND_PAYMENT_REMINDERS = true;
+
+/** Where students sign in. */
+const STUDENT_PORTAL_URL = 'https://jeevunjee.com/#/portal';
 
 const SHEET_NAME = 'Applications';
 
@@ -108,6 +120,58 @@ function doGet() {
   return ContentService.createTextOutput('Jeevunjee application inbox is running.');
 }
 
+/**
+ * Run this once from the editor after saving MAILER_KEY (from `select public.set_mailer_key();` in Supabase) in
+ * Project Settings → Script properties. It makes the hourly job and runs it once.
+ */
+function setupMailer() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'hourlyMail') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('hourlyMail').timeBased().everyHours(1).create();
+  hourlyMail();
+}
+
+/** Payment reminders for students and "a new trustee joined" emails. The database hands each one over once. */
+function hourlyMail() {
+  const key = PropertiesService.getScriptProperties().getProperty('MAILER_KEY') || '';
+  if (!/^[0-9a-f]{64}$/.test(key)) {
+    console.warn('MAILER_KEY is missing or wrong — see SETUP.md');
+    return;
+  }
+  const room = SEND_PAYMENT_REMINDERS ? left_('reminder', MAX_REMINDER_EMAILS_PER_DAY) : 0;
+  const d = rpc_('mailer_digest', { p_key: key, p_max: room });
+  if (!d) return;
+  (Array.isArray(d.reminders) ? d.reminders : []).forEach(function (r) {
+    try {
+      if (isEmail_(r.email) && allow_('reminder', MAX_REMINDER_EMAILS_PER_DAY)) remindStudent_(r);
+    } catch (err) { console.error('reminder email failed', err); }
+  });
+  const joined = Array.isArray(d.new_trustees) ? d.new_trustees : [];
+  const to = (Array.isArray(d.trustee_emails) ? d.trustee_emails : []).filter(isEmail_);
+  if (joined.length && to.length) {
+    try {
+      if (allow_('joined', MAX_NEW_TRUSTEE_EMAILS_PER_DAY)) announceTrustees_(joined, to);
+    } catch (err) { console.error('new trustee email failed', err); }
+  }
+}
+
+/** Call a database function with the public key. Returns null on any error. */
+function rpc_(name, args) {
+  const res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/rpc/' + name, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+    payload: JSON.stringify(args),
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() !== 200) {
+    console.error(name + ' ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 300));
+    return null;
+  }
+  return JSON.parse(res.getContentText() || 'null');
+}
+
 /** Ask the portal database for the application. Returns null for anything that isn't a fresh, real application. */
 function claim_(reference, token) {
   const res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/rpc/claim_notification', {
@@ -139,6 +203,12 @@ function allow_(kind, max) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/** How many more emails of this kind may go today. */
+function left_(kind, max) {
+  const key = 'sent_' + kind + '_' + Utilities.formatDate(new Date(), 'GMT', 'yyyy-MM-dd');
+  return Math.max(0, max - Number(PropertiesService.getScriptProperties().getProperty(key) || 0));
 }
 
 /** The fields the sheet and the emails show, built from what the database returned. */
@@ -263,6 +333,66 @@ function confirmApplicant_(reference, a) {
       '<p style="font-family:Georgia,serif;font-size:18px;color:#111;margin-top:24px">— The Jeevunjee family</p>',
   });
 }
+
+const P_ = 'font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#3A362D';
+
+function portalButton_(href, text) {
+  return '<p style="margin:24px 0"><a href="' + href + '" style="display:inline-block;padding:12px 22px;border-radius:999px;' +
+    'text-decoration:none;font-size:14px;background:#111;color:#FDFCF8">' + text + '</a></p>';
+}
+
+function remindStudent_(r) {
+  const first = str_(r.name).split(/\s+/)[0];
+  const when = Utilities.formatDate(new Date(str_(r.due_date) + 'T00:00:00Z'), 'GMT', 'EEEE d MMMM yyyy');
+  const amount = Number(r.amount_lkr) > 0 ? ' (Rs ' + Number(r.amount_lkr).toLocaleString('en-US') + ')' : '';
+  const what = esc_(r.label) + (str_(r.course) ? ' for ' + esc_(r.course) : '') + (str_(r.institution) ? ' at ' + esc_(r.institution) : '');
+  const subject = {
+    week: 'Coming up: ' + line_(r.label) + ' is due on ' + when,
+    day: 'Due very soon: ' + line_(r.label) + ' on ' + when,
+    overdue: 'Overdue: ' + line_(r.label) + ' was due on ' + when,
+  }[r.kind] || ('Payment reminder: ' + line_(r.label));
+  const lead = r.kind === 'overdue'
+    ? 'Your payment ' + what + amount + ' was due on <strong>' + when + '</strong> and isn’t marked as paid yet.'
+    : 'Your payment ' + what + amount + ' is due on <strong>' + when + '</strong>.';
+  const ask = r.funded_by === 'self'
+    ? 'Your family covers this payment. Once it is paid, please add the receipt in the student portal.'
+    : 'The trust pays this one. If you haven’t yet, please add the invoice from your institution in the student portal so the trustees can pay it on time, and the receipt once it is paid.';
+  MailApp.sendEmail({
+    to: str_(r.email),
+    subject: subject.slice(0, 120),
+    name: 'Jeevunjee Scholarship',
+    replyTo: REPLY_TO,
+    htmlBody:
+      '<div style="font-family:Georgia,serif;font-size:24px;color:#111;margin-bottom:16px">Hello ' + esc_(first) + ',</div>' +
+      '<p style="' + P_ + '">' + lead + '</p>' +
+      '<p style="' + P_ + '">' + ask + '</p>' +
+      portalButton_(STUDENT_PORTAL_URL, 'Open the student portal') +
+      '<p style="' + P_ + '">If it has already been sorted, or something here is wrong, just reply to this email.</p>' +
+      '<p style="font-family:Arial,sans-serif;font-size:12px;color:#948C7C;margin-top:24px">Student ' + esc_(r.code) +
+      '. You get these emails because you have a scholarship with the Jeevunjee family.</p>',
+  });
+}
+
+function announceTrustees_(joined, to) {
+  const names = joined.map(function (t) { return line_(t.name) || line_(t.email); }).join(', ');
+  const list = joined.map(function (t) {
+    return '<li>' + esc_(t.name || 'No name given') + ' — ' + esc_(t.email) + '</li>';
+  }).join('');
+  MailApp.sendEmail({
+    to: to.join(','),
+    subject: ('New trustee login: ' + names).slice(0, 120),
+    name: 'Jeevunjee Scholarship',
+    htmlBody:
+      '<div style="font-family:Georgia,serif;font-size:24px;color:#111;margin-bottom:16px">Someone new joined as a trustee</div>' +
+      '<ul style="' + P_ + '">' + list + '</ul>' +
+      '<p style="' + P_ + '">Trustees can see every student and application in both trusts, including ID documents.</p>' +
+      '<p style="' + P_ + '">If you don’t know about this, delete their login in Supabase → Authentication → Users straight away, ' +
+      'and cancel any open codes on the Trustees page.</p>' +
+      portalButton_(PORTAL_URL.replace(/applications$/, 'trustees'), 'Open the Trustees page'),
+  });
+}
+
+function isEmail_(v) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(str_(v)); }
 
 /** Text from outside: no control characters except new lines and tabs, trimmed, capped. */
 function str_(v) { return v == null || typeof v === 'object' ? '' : String(v).replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').trim().slice(0, 20000); }

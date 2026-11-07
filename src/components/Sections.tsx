@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { APPLY_VIDEO, CONTACT_EMAIL, family, pillars, steps } from '../content';
+import { APPLY_VIDEO, CONTACT_EMAIL, PRIVACY_APPROVED, family, pillars, steps } from '../content';
 import { useReveal } from '../hooks/useReveal';
 import { HoverWords } from './HoverWords';
 
@@ -219,10 +219,13 @@ export function Footer() {
           </div>
           <div>
             <div className="footer-h">Trust</div>
-            {/* TODO(launch): privacy + retention need real pages — see ASSESSMENT.md */}
             <div className="footer-col">
-              <span>Privacy notice</span>
-              <span>Data retention</span>
+              {PRIVACY_APPROVED && (
+                <>
+                  <a href="#/privacy">Privacy notice</a>
+                  <a href="#/privacy">Data retention</a>
+                </>
+              )}
               <a href="#/portal">Trustee &amp; student sign-in</a>
             </div>
           </div>

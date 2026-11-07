@@ -10,6 +10,11 @@ project started, what exists now, why it is built this way, what is unfinished, 
 - **Planned host:** Vercel. It is configured (`vercel.json`) but has not been deployed yet, so there is no URL.
 - **Owner:** Ammar (the person building it), for the Jeevunjee family's two trusts.
 
+> **Update, Nov 2026 — hosting:** the site now lives on **Netlify** at https://jeevunjee.com (project
+> `jeevunjee-trust-preview`, configured by `netlify.toml`). GitHub Pages and Vercel below are history: the GitHub Pages
+> workflow has been removed, and `vercel.json` is kept only as a fallback. Wherever this file says "the Vercel URL",
+> read https://jeevunjee.com.
+
 > ⚠️ **Urgent, first thing:** the site on GitHub Pages already runs the new code, but the Supabase database may
 > still have the old rules. Until the owner re-runs `supabase/schema.sql` (step 1 below), **sending an application
 > fails** (the site calls `submit_application` with a new third argument). Do step 1 before anything else.

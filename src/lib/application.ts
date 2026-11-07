@@ -27,6 +27,7 @@ export type Answers = {
   // Programme & finances
   courseTitle: string;
   institution: string;
+  institutionUndecided: boolean;
   awardingBody: string;
   durationYears: string;
   paymentFrequency: string;
@@ -56,7 +57,7 @@ export const emptyAnswers = (): Answers => ({
   school: '', education: [{ id: newId(), level: '', school: '', year: '', results: '' }], achievements: '',
   hasWork: false, workCompany: '', workRole: '', workSkills: '',
   ambition: '', goals: '',
-  courseTitle: '', institution: '', awardingBody: '', durationYears: '', paymentFrequency: '', startMonth: '',
+  courseTitle: '', institution: '', institutionUndecided: false, awardingBody: '', durationYears: '', paymentFrequency: '', startMonth: '',
   totalFeeLkr: '', totalFeeForeign: '', foreignCurrency: 'GBP', selfFinancedLkr: '', selfFinancedForeign: '',
   assistanceKind: '', plan: [{ id: newId(), label: '', when: '', amountLkr: '', amountForeign: '', payer: 'trust' }],
   familySituation: '',

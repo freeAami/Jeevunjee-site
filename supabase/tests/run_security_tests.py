@@ -146,35 +146,79 @@ denied('student cannot issue trustee codes', "select issue_trustee_code('x@x.tes
 denied('student cannot list stale uploads', "select * from stale_application_uploads()", role='authenticated', uid=U)
 equals('student cannot delete applicant uploads', "with d as (delete from storage.objects where bucket_id = 'applications' returning 1) select count(*) from d", 0, role='authenticated', uid=U)
 
-# --- trustee invites (Trustees page) ------------------------------------------------
+# --- trustee invites (Trustees page): only the owner makes codes, and codes last 48 hours -------------
 denied('anon cannot create trustee invites', "select issue_trustee_invite('x')", role='anon')
 denied('student cannot create trustee invites', "select issue_trustee_invite('x')", role='authenticated', uid=U)
-denied('an invite must say who it is for', "select issue_trustee_invite('  ')", role='authenticated', uid=A)
-inv = ok('trustee creates an invite', "select issue_trustee_invite('For Imran')", role='authenticated', uid=A)
+denied('a trustee who is not the owner cannot create invites', "select issue_trustee_invite('x')", role='authenticated', uid=A)
+inv_owner = ok('owner creates their own code in the SQL editor', "select issue_trustee_invite('Owner')")
+O = ok('owner signs up with that code', f"""insert into auth.users (email, raw_user_meta_data) values ('owner@x.test', '{{"access_code":"{inv_owner}","full_name":"Owner"}}') returning id""")
+equals('a code from the SQL editor makes the owner', f"select role || '|' || can_invite from profiles where id = '{O}'", 'admin|true')
+equals('an email-bound trustee is not the owner', f"select can_invite::text from profiles where id = '{A}'", 'false')
+equals('trustee cannot make themselves the owner', f"with u as (update profiles set can_invite = true where id = '{A}' returning 1) select count(*) from u", 0, role='authenticated', uid=A)
+denied('an invite must say who it is for', "select issue_trustee_invite('  ')", role='authenticated', uid=O)
+inv = ok('owner creates an invite in the portal', "select issue_trustee_invite('For Imran')", role='authenticated', uid=O)
 check('invite code is 10 safe characters', len(inv) == 10 and not any(c in inv for c in '01IO'), inv)
-inv_owner = ok('owner creates an invite in the SQL editor', "select issue_trustee_invite('For Altaf')")
+equals('invite lasts 48 hours', f"select (expires_at - created_at) = interval '48 hours' from trustee_invites where code = '{inv}'", 't')
 equals('anyone can check a working code', f"select trustee_code_ok('{inv[:5].lower()}-{inv[5:]}')", 't', role='anon')
 equals('a wrong code checks as not working', "select trustee_code_ok('ABCDEFGHJK')", 'f', role='anon')
 equals('a student code is not a trustee code', f"select trustee_code_ok('{code}')", 'f', role='anon')
 equals('anon cannot read invites', "select count(*) from trustee_invites", 0, role='anon')
 equals('student cannot read invites', "select count(*) from trustee_invites", 0, role='authenticated', uid=U)
 equals('trustee sees invites', "select count(*) from trustee_invites", 2, role='authenticated', uid=A)
-denied('trustee cannot write invite codes directly', "insert into trustee_invites (code, label, expires_at) values ('AAAAAAAAAA', 'x', now() + interval '1 year')", role='authenticated', uid=A)
-equals('trustee cannot extend an invite', "with u as (update trustee_invites set expires_at = now() + interval '1 year' returning 1) select count(*) from u", 0, role='authenticated', uid=A)
+denied('trustee cannot write invite codes directly', "insert into trustee_invites (code, label, expires_at, can_invite) values ('AAAAAAAAAA', 'x', now() + interval '1 year', true)", role='authenticated', uid=A)
+equals('trustee cannot extend an invite', "with u as (update trustee_invites set expires_at = now() + interval '1 year' returning 1) select count(*) from u", 0, role='authenticated', uid=O)
 B = ok('new trustee links their own email with the invite', f"""insert into auth.users (email, raw_user_meta_data) values ('New.Trustee@x.test', '{{"access_code":"{inv[:5]}-{inv[5:]}","full_name":"New Trustee"}}') returning id""")
-equals('invite made them a trustee', f"select role || '|' || full_name from profiles where id = '{B}'", 'admin|New Trustee')
+equals('invite made them a trustee, not an owner', f"select role || '|' || full_name || '|' || can_invite from profiles where id = '{B}'", 'admin|New Trustee|false')
+denied('a trustee invited from the portal cannot invite others', "select issue_trustee_invite('x')", role='authenticated', uid=B)
 equals('invite records who used it', f"select used_email || '|' || (used_by = '{B}') from trustee_invites where code = '{inv}'", 'new.trustee@x.test|true', role='authenticated', uid=A)
 equals('used code no longer checks as working', f"select trustee_code_ok('{inv}')", 'f', role='anon')
 denied('invite works only once', f"""insert into auth.users (email, raw_user_meta_data) values ('second@x.test', '{{"access_code":"{inv}"}}')""")
 equals('new trustee sees students', "select count(*) from students", 2, role='authenticated', uid=B)
 equals('student cannot cancel invites', "with d as (delete from trustee_invites returning 1) select count(*) from d", 0, role='authenticated', uid=U)
 equals('used invites cannot be deleted', f"with d as (delete from trustee_invites where code = '{inv}' returning 1) select count(*) from d", 0, role='authenticated', uid=B)
-equals('trustee cancels an unused invite', f"with d as (delete from trustee_invites where code = '{inv_owner}' returning 1) select count(*) from d", 1, role='authenticated', uid=B)
-denied('cancelled invite no longer works', f"""insert into auth.users (email, raw_user_meta_data) values ('third@x.test', '{{"access_code":"{inv_owner}"}}')""")
-old = ok('owner creates an invite to let expire', "select issue_trustee_invite('Old')")
+spare = ok('owner creates an invite to cancel', "select issue_trustee_invite('Spare')", role='authenticated', uid=O)
+equals('any trustee can cancel an unused invite', f"with d as (delete from trustee_invites where code = '{spare}' returning 1) select count(*) from d", 1, role='authenticated', uid=B)
+denied('cancelled invite no longer works', f"""insert into auth.users (email, raw_user_meta_data) values ('third@x.test', '{{"access_code":"{spare}"}}')""")
+old = ok('owner creates an invite to let expire', "select issue_trustee_invite('Old')", role='authenticated', uid=O)
 ok('the invite expires', f"update trustee_invites set expires_at = now() - interval '1 minute' where code = '{old}'")
 denied('expired invite does not work', f"""insert into auth.users (email, raw_user_meta_data) values ('late@x.test', '{{"access_code":"{old}"}}')""")
 
+# --- reminder and new-trustee emails (Apps Script mailer) ------------------------------------------
+import json
+denied('anon cannot make the mailer key', "select set_mailer_key()", role='anon')
+denied('trustee cannot make the mailer key', "select set_mailer_key()", role='authenticated', uid=A)
+MK = ok('owner makes the mailer key in the SQL editor', "select set_mailer_key()")
+check('mailer key is long and random', len(MK) == 64, MK)
+equals('wrong key gets nothing', "select coalesce(mailer_digest(repeat('a', 64))::text, 'none')", 'none', role='anon')
+equals('no key gets nothing', "select coalesce(mailer_digest(null)::text, 'none')", 'none', role='anon')
+ok('a student with payments coming up', """do $$ declare s uuid; c uuid; t date := (now() at time zone 'Asia/Colombo')::date; begin
+  insert into students (full_name, email) values ('Remind Me', 'remind@x.test') returning id into s;
+  insert into courses (student_id, title) values (s, 'BSc') returning id into c;
+  insert into instalments (course_id, student_id, label, due_date, amount_lkr) values
+    (c, s, 'Week', t + 5, 1000), (c, s, 'Tomorrow', t + 1, 1000), (c, s, 'Late', t - 4, 1000), (c, s, 'Far', t + 40, 1000),
+    (c, s, 'Yesterday', t - 1, 1000);
+  insert into instalments (course_id, student_id, label, due_date, amount_lkr, status) values (c, s, 'Cancelled', t + 3, 1000, 'cancelled');
+  insert into students (full_name) values ('No Email') returning id into s;
+  insert into courses (student_id, title) values (s, 'BA') returning id into c;
+  insert into instalments (course_id, student_id, label, due_date, amount_lkr) values (c, s, 'Week', t + 5, 1000);
+end $$""")
+d = json.loads(ok('mailer collects its emails', f"select mailer_digest('{MK}')::text", role='anon') or 'null')
+mine = sorted(f"{r['label']}:{r['kind']}" for r in d['reminders'] if r['email'] == 'remind@x.test')
+check('reminders: due within a week, tomorrow, and overdue; not cancelled, far off or no email', mine == ['Late:overdue', 'Tomorrow:day', 'Week:week'] and len(d['reminders']) == 3, str(d['reminders']))
+check('trustees who joined are announced', len(d['new_trustees']) >= 1, str(d['new_trustees']))
+d = json.loads(ok('mailer asks again', f"select mailer_digest('{MK}')::text", role='anon') or 'null')
+check('each reminder and announcement goes once', d['reminders'] == [] and d['new_trustees'] == [], str(d))
+equals('anon cannot read reminders sent', "select count(*) from reminders_sent", 0, role='anon')
+equals('student cannot read reminders sent', "select count(*) from reminders_sent", 0, role='authenticated', uid=U)
+equals('trustee sees reminders sent', "select count(*) from reminders_sent", 3, role='authenticated', uid=A)
+equals('trustee cannot change the announced flag', f"with u as (update profiles set announced = false where id = '{A}' returning 1) select count(*) from u", 0, role='authenticated', uid=A)
+inv3 = ok('owner invites one more', "select issue_trustee_invite('Later')", role='authenticated', uid=O)
+ok('later trustee joins', f"""insert into auth.users (email, raw_user_meta_data) values ('later@x.test', '{{"access_code":"{inv3}","full_name":"Later Trustee"}}') returning id""")
+d = json.loads(ok('mailer asks after the new trustee', f"select mailer_digest('{MK}')::text", role='anon') or 'null')
+check('the other trustees are told about the new one', [t['email'] for t in d['new_trustees']] == ['later@x.test']
+      and {'trustee@x.test', 'owner@x.test', 'new.trustee@x.test'} <= set(d['trustee_emails']) and 'later@x.test' not in d['trustee_emails'], str(d))
+ok('owner replaces the mailer key', "select set_mailer_key()")
+equals('the old key stops working', f"select coalesce(mailer_digest('{MK}')::text, 'none')", 'none', role='anon')
 # --- flood guards ---------------------------------------------------------------
 ok('fill the hour with applications', "insert into applications (reference, full_name, answers) select 'JVJ-F-' || g, 'F', '{}' from generate_series(1, 14) g")
 s_, out_, err_ = psql(f"""select submit_application('{{"fullName":"X","email":"e","signatureName":"X"}}', '[]')""", role='anon')

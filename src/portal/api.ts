@@ -38,11 +38,13 @@ export interface PortalApi {
   convertToRupees(rates: Record<string, number>): Promise<number>;
   deleteDocument(doc: DocumentRec): Promise<void>;
   fileUrl(bucket: string, path: string): Promise<string>;
+  /** Invoice, cheque and receipt photos from every student, newest first. */
+  loadPaymentProof(): Promise<DocumentRec[]>;
   addNote(studentId: string, body: string, authorName: string): Promise<void>;
   deleteNote(id: string): Promise<void>;
   issueAccessCode(studentId: string): Promise<string>;
   loadTrustees(): Promise<TrusteesPage>;
-  /** One-time code (7 days) that lets whoever holds it link their own email as a trustee. */
+  /** One-time code (48 hours, portal owner only) that lets whoever holds it link their own email as a trustee. */
   createTrusteeInvite(label: string): Promise<string>;
   cancelTrusteeInvite(id: string): Promise<void>;
   loadApplications(): Promise<Application[]>;
@@ -286,6 +288,10 @@ export function createLiveApi(): PortalApi {
 
     fileUrl: (bucket, path) =>
       withSb(async (c) => check(await c.storage.from(bucket).createSignedUrl(path, 60 * 30))!.signedUrl),
+
+    loadPaymentProof: () =>
+      withSb(async (c) => check(await c.from('documents').select('*').in('category', ['invoice', 'cheque', 'receipt'])
+        .order('created_at', { ascending: false }).limit(2000)) as DocumentRec[]),
 
     addNote: (studentId, body, authorName) =>
       withSb(async (c) => void check(await c.from('notes').insert({ student_id: studentId, body, author_name: authorName }))),

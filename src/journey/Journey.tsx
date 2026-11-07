@@ -48,7 +48,7 @@ function validate(scene: number, a: Answers, files: Files): FieldError {
       return a.ambition.trim() ? null : { field: 'ambition', msg: 'A few lines is enough. This is one of the parts we read most carefully.' };
     case 7:
       if (!a.courseTitle.trim()) return { field: 'courseTitle', msg: 'Which course or degree is it?' };
-      if (!a.institution.trim()) return { field: 'institution', msg: 'Where will you study?' };
+      if (!a.institution.trim() && !a.institutionUndecided) return { field: 'institution', msg: 'Where will you study? If you haven’t chosen yet, tap “Not decided yet”.' };
       return a.durationYears ? null : { field: 'durationYears-0', msg: 'How many years is the course?' };
     case 8: {
       if (!toNumber(a.totalFeeLkr)) return { field: 'totalFeeLkr', msg: 'Roughly how much does the whole course cost?' };
@@ -360,8 +360,13 @@ export function Journey({ onClose }: { onClose: () => void }) {
             <TextField id="courseTitle" label="Course or degree" big value={a.courseTitle} onChange={(v) => set('courseTitle', v)}
               placeholder="e.g. BEng (Hons) Electronic & Electrical Engineering" error={errFor('courseTitle')} />
             <div className="record-grid">
-              <TextField id="institution" label="Where you’ll study" value={a.institution} onChange={(v) => set('institution', v)}
-                placeholder="e.g. SLIIT Academy" error={errFor('institution')} />
+              <div>
+                <TextField id="institution" label={a.institutionUndecided ? 'Places you’re considering' : 'Where you’ll study'}
+                  optional={a.institutionUndecided} value={a.institution} onChange={(v) => set('institution', v)}
+                  placeholder={a.institutionUndecided ? 'e.g. SLIIT or IIT' : 'e.g. SLIIT Academy'} error={errFor('institution')} />
+                <Switch id="institutionUndecided" label="Not decided yet" checked={a.institutionUndecided}
+                  onChange={(v) => set('institutionUndecided', v)} />
+              </div>
               <TextField id="awardingBody" label="Awarding university" optional value={a.awardingBody} onChange={(v) => set('awardingBody', v)}
                 placeholder="e.g. Liverpool John Moores University" />
             </div>
@@ -461,7 +466,7 @@ export function Journey({ onClose }: { onClose: () => void }) {
               </ReviewItem>
               <ReviewItem title="Future plans" onEdit={() => editFromReview(6)}>{a.ambition.slice(0, 140)}{a.ambition.length > 140 ? '…' : ''}</ReviewItem>
               <ReviewItem title="Programme" onEdit={() => editFromReview(7)}>
-                {a.courseTitle}{a.institution && ` · ${a.institution}`}{a.durationYears && ` · ${a.durationYears} yr`}
+                {a.courseTitle}{a.institutionUndecided ? ` · place not decided yet${a.institution ? ` (considering ${a.institution})` : ''}` : a.institution && ` · ${a.institution}`}{a.durationYears && ` · ${a.durationYears} yr`}
               </ReviewItem>
               <ReviewItem title="Asking the trust for" onEdit={() => editFromReview(8)}>
                 <strong>Rs {fmt(req.lkr)}</strong>
