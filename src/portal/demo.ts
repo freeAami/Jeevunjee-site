@@ -2,10 +2,10 @@
 // Used until Supabase is connected, so the trustees can try it out. Nothing here is real.
 import type { PortalApi, Session } from './api';
 import type {
-  Application, Course, DocumentRec, Instalment, Note, Overview, Payment, Profile, Student, Trust,
+  Application, Course, DocumentRec, Instalment, Note, Overview, Payment, Profile, Student, Trust, TrusteeInvite,
 } from './types';
 
-type Db = Overview & { documents: DocumentRec[]; notes: Note[]; profiles: Profile[] };
+type Db = Overview & { documents: DocumentRec[]; notes: Note[]; profiles: Profile[]; trusteeInvites?: TrusteeInvite[] };
 
 const KEY = 'jvj-demo-data-v2';
 const SESSION_KEY = 'jvj-demo-session';
@@ -166,11 +166,11 @@ export function createDemoApi(): PortalApi {
     list.push(created);
     return created;
   };
+  // A blob: link, because browsers refuse to open data: links in a new tab.
   const placeholder = (title: string) =>
-    'data:image/svg+xml;charset=utf-8,' +
-    encodeURIComponent(
+    URL.createObjectURL(new Blob([
       `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="100%" height="100%" fill="#F8F6F0"/><text x="50%" y="46%" text-anchor="middle" font-family="sans-serif" font-size="28" fill="#3A362D">${title.replace(/[<&>]/g, '')}</text><text x="50%" y="56%" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#6F6F6F">Preview mode — sample document</text></svg>`,
-    );
+    ], { type: 'image/svg+xml' }));
   const addFile = (studentId: string, file: File) => {
     const path = `students/${studentId}/${id()}-${file.name}`;
     files.set(path, URL.createObjectURL(file));
@@ -200,6 +200,9 @@ export function createDemoApi(): PortalApi {
     async signUp() {
       throw new Error('Creating accounts works once the portal is connected to Supabase.');
     },
+    async checkTrusteeCode() {
+      throw new Error('Trustee codes work once the portal is connected to Supabase.');
+    },
     async signOut() {
       sessionStorage.removeItem(SESSION_KEY);
       emit('SIGNED_OUT');
@@ -212,7 +215,7 @@ export function createDemoApi(): PortalApi {
       const s = session();
       if (!s) return null;
       return s.role === 'admin'
-        ? { id: 'demo-admin', role: 'admin', student_id: null, email: 'trustee@preview', full_name: 'Trustee (preview)' }
+        ? { id: 'demo-admin', role: 'admin', student_id: null, email: 'trustee@preview', full_name: 'Trustee (preview)', can_invite: true }
         : { id: 'demo-student', role: 'student', student_id: s.studentId ?? null, email: 'student@preview', full_name: null };
     },
     loadOverview: () => wait(structuredClone({ ...db, documents: undefined, notes: undefined, profiles: undefined }) as Overview),
@@ -327,6 +330,9 @@ export function createDemoApi(): PortalApi {
       db.documents = db.documents.filter((d) => d.id !== doc.id);
       save();
     },
+    loadPaymentProof: () =>
+      wait(structuredClone(db.documents.filter((d) => ['invoice', 'cheque', 'receipt'].includes(d.category))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at)))),
     async fileUrl(_bucket, path) {
       return files.get(path) ?? placeholder(path.split('/').pop()?.replace(/^[0-9a-f-]{36}-/, '') ?? 'Document');
     },
@@ -356,6 +362,25 @@ export function createDemoApi(): PortalApi {
       s.access_code_expires = new Date(Date.now() + 14 * 86400000).toISOString();
       save();
       return code;
+    },
+    loadTrustees: () =>
+      wait(structuredClone({
+        trustees: [{ id: 'demo-admin', role: 'admin', student_id: null, email: 'trustee@preview', full_name: 'Trustee (preview)', created_at: now() }] as Profile[],
+        invites: db.trusteeInvites ?? [],
+      })),
+    async createTrusteeInvite(label) {
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const code = Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => alphabet[b % 32]).join('');
+      db.trusteeInvites = [
+        { id: id(), code, label, created_at: now(), expires_at: new Date(Date.now() + 48 * 3600000).toISOString(), used_at: null, used_email: null },
+        ...(db.trusteeInvites ?? []),
+      ];
+      save();
+      return code;
+    },
+    async cancelTrusteeInvite(iid) {
+      db.trusteeInvites = (db.trusteeInvites ?? []).filter((i) => i.id !== iid || i.used_at);
+      save();
     },
     loadApplications: () => wait(structuredClone(db.applications)),
     async updateApplication(aid, patch) {

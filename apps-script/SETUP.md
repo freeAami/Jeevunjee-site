@@ -59,6 +59,25 @@ Share the sheet with them (the **Share** button, as *Editor*). Nobody else shoul
 
 ---
 
+## 7. Payment reminders and new-trustee emails (about 5 minutes)
+
+Once this is on, the script checks the portal every hour and:
+
+- emails each student **a week before** a payment is due, **the day before**, and again **3 days after** if it still
+  isn't marked paid (only active students on an ongoing course, with an email address in their file);
+- emails **every trustee** when someone new joins as a trustee, so nobody can join unnoticed.
+
+Each email goes once. Replies go to the trustees.
+
+1. In Supabase → **SQL Editor → New query**, run `select public.set_mailer_key();` and copy the long key it shows.
+2. In Apps Script → **Project Settings** (gear icon) → **Script properties → Add script property**: name
+   `MAILER_KEY`, value the key. Save. (Keep it here only — not in `Code.gs`, not in the sheet.)
+3. Back in the editor, choose **setupMailer** in the function dropdown and click **Run**. Allow the new permission
+   (it needs to run on a timer).
+
+To stop payment reminders, set `SEND_PAYMENT_REMINDERS = false` at the top of the script. If the key ever leaks, run
+step 1 again and paste the new key: the old one stops working at once.
+
 ## Day to day
 
 - New applications arrive as emails. Click **Open in the applications sheet**.
@@ -76,6 +95,6 @@ so the website doesn't need changing.
 ## Limits
 
 A regular Gmail account can send about 100 emails a day through scripts. The script never sends more than 25
-trustee emails and 20 applicant emails a day (`MAX_…_PER_DAY` at the top), so it can't use the quota up; anything
+trustee emails, 20 applicant emails, 40 payment reminders and 10 new-trustee emails a day (`MAX_…_PER_DAY` at the top), so it can't use the quota up; anything
 beyond that still arrives in the sheet and the portal. The database also pauses new applications after 15 in an
 hour or 60 in a day.

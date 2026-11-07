@@ -3,6 +3,9 @@
 /** Public contact address. Empty = no address is shown (applicants reply to their confirmation email instead). */
 export const CONTACT_EMAIL = '';
 
+/** Set to true once the trustees have approved the privacy notice (src/components/Privacy.tsx); it then shows in the footer. */
+export const PRIVACY_APPROVED = false;
+
 /** The committee's applications sheet. Google sign-in protects it; only people it is shared with can open it. */
 export const COMMITTEE_URL =
   (import.meta.env.VITE_COMMITTEE_URL as string | undefined) ||

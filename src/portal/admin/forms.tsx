@@ -218,6 +218,9 @@ export function PaymentForm({ studentId, courses, instalments, trusts, payment, 
         e.preventDefault();
         if (!v.paid_on) return setErr('When was it paid?');
         if (!v.amount_lkr && !payment?.amount_foreign) return setErr('Enter how much was paid.');
+        const step = instalments.find((i) => i.id === v.instalment_id);
+        if (!payment && step?.amount_foreign)
+          return setErr(`“${step.label}” still has ${fmtForeign(step.amount_foreign, step.foreign_currency)} from before the portal used rupees only. Use “Convert old amounts to rupees” on the Overview page first, then log this payment.`);
         run(() => api.savePayment({
           ...v, id: payment?.id, student_id: studentId, instalment_id: v.instalment_id || null,
           course_id: v.instalment_id ? courseOf(v.instalment_id)?.id ?? null : courses[0]?.id ?? null,

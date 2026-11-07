@@ -9,6 +9,7 @@ export type Profile = {
   email: string | null;
   full_name: string | null;
   created_at?: string;
+  can_invite?: boolean;
 };
 
 export type Trust = { id: string; name: string };
@@ -180,3 +181,15 @@ export type StudentBundle = {
   logins: Profile[];
   trusts: Trust[];
 };
+
+export type TrusteeInvite = {
+  id: string;
+  code: string;
+  label: string;
+  created_at: string;
+  expires_at: string;
+  used_at: string | null;
+  used_email: string | null;
+};
+
+export type TrusteesPage = { trustees: Profile[]; invites: TrusteeInvite[] };

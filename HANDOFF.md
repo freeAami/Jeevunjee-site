@@ -10,6 +10,11 @@ project started, what exists now, why it is built this way, what is unfinished, 
 - **Planned host:** Vercel. It is configured (`vercel.json`) but has not been deployed yet, so there is no URL.
 - **Owner:** Ammar (the person building it), for the Jeevunjee family's two trusts.
 
+> **Update, Nov 2026 — hosting:** the site now lives on **Netlify** at https://jeevunjee.com (project
+> `jeevunjee-trust-preview`, configured by `netlify.toml`). GitHub Pages and Vercel below are history: the GitHub Pages
+> workflow has been removed, and `vercel.json` is kept only as a fallback. Wherever this file says "the Vercel URL",
+> read https://jeevunjee.com.
+
 > ⚠️ **Urgent, first thing:** the site on GitHub Pages already runs the new code, but the Supabase database may
 > still have the old rules. Until the owner re-runs `supabase/schema.sql` (step 1 below), **sending an application
 > fails** (the site calls `submit_application` with a new third argument). Do step 1 before anything else.
@@ -75,13 +80,14 @@ project started, what exists now, why it is built this way, what is unfinished, 
 - Students see only their own file and can upload invoices, results and receipts.
 
 ### Database (`supabase/schema.sql`, safe to re-run)
-- **Tables:** `trusts`, `admin_emails`, `applications`, `students`, `profiles`, `courses`, `instalments`, `payments`,
+- **Tables:** `trusts`, `admin_emails`, `trustee_invites`, `applications`, `students`, `profiles`, `courses`, `instalments`, `payments`,
   `documents`, `notes`.
 - **Row-level security on everything.** Trustees (`is_admin()`) see and edit all of it. A student reads only their
   own rows (`my_student_id()`). The public can only call `submit_application` and upload into fresh folders.
 - **Sign-up trigger `handle_new_user`.** It refuses every sign-up unless one of these holds:
-  - **Trustee:** a listed email **and** its one-time trustee code (`issue_trustee_code(email)`, run in the SQL
-    editor, valid 7 days, single use).
+  - **Trustee:** a one-time trustee invite (`issue_trustee_invite(label)`, made on the portal's Trustees page or in the
+    SQL editor, valid 7 days, single use); the holder links their own email. Older route: a listed email **and** its
+    one-time code (`issue_trustee_code(email)`).
   - **Student:** a one-time access code issued by a trustee (valid 14 days, single use).
 - **Main functions:**
   - `submit_application`: validates input, rate-limits to 15 per hour and 60 per day, and only accepts files that were

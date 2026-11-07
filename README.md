@@ -40,7 +40,9 @@ See `ASSESSMENT.md` for launch readiness.
 
 ## Deploying
 
-Every push to `main` builds the site and publishes it to GitHub Pages (`.github/workflows/deploy.yml`).
+The site is hosted on Netlify (project `jeevunjee-trust-preview`) at https://jeevunjee.com. Netlify builds it with
+`netlify.toml` (`npm run build`, publish `dist`, security headers). Once the Netlify project is linked to this repo,
+every push to `main` deploys. Run database changes (`supabase/schema.sql`) before deploying code that needs them.
 The committee's Apps Script link and sheet link are built in (`src/lib/application.ts`, `src/content.ts`).
 If you redeploy the script as a *new* deployment its URL changes — update it there. (Editing the existing
 deployment with "New version" keeps the same URL.)

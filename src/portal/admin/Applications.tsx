@@ -52,7 +52,7 @@ export function Applications() {
                   <tr key={a.id} className="clickable" onClick={() => (location.hash = `#/portal/applications/${a.id}`)}>
                     <td>{fmtDate(a.created_at)}</td>
                     <td><a href={`#/portal/applications/${a.id}`}>{a.full_name}</a><small className="pnote">{a.reference}</small></td>
-                    <td>{str(ans.courseTitle) || str(ans.course) || '—'}<small className="pnote">{str(ans.institution)}</small></td>
+                    <td>{str(ans.courseTitle) || str(ans.course) || '—'}<small className="pnote">{ans.institutionUndecided === true ? 'Place not decided yet' : str(ans.institution)}</small></td>
                     <td className="num">{requestedText(ans)}</td>
                     <td><Badge tone={st.tone}>{st.label}</Badge></td>
                   </tr>
@@ -326,7 +326,9 @@ function ApplicationAnswers({ app, onError }: { app: Application; onError: (m: s
       <Card title="Programme & finances">
         <dl className="pdetails-list">
           <Row label="Course">{str(ans.courseTitle)}</Row>
-          <Row label="Where">{[str(ans.institution), str(ans.awardingBody)].filter(Boolean).join(' · ')}</Row>
+          <Row label="Where">{ans.institutionUndecided === true
+            ? `Not decided yet${str(ans.institution) ? ` — considering ${str(ans.institution)}` : ''}`
+            : [str(ans.institution), str(ans.awardingBody)].filter(Boolean).join(' · ')}</Row>
           <Row label="Length">{str(ans.durationYears) && `${str(ans.durationYears)} year(s)`}</Row>
           <Row label="Billing">{str(ans.paymentFrequency)}</Row>
           <Row label="Starts">{str(ans.startMonth)}</Row>

@@ -29,6 +29,22 @@ create table if not exists public.admin_emails (
 alter table public.admin_emails add column if not exists invite_code text;
 alter table public.admin_emails add column if not exists invite_expires timestamptz;
 
+-- ---------- trustee invites (the usual way to add a trustee) -------------------------------------------
+-- A trustee creates a one-time code in the portal (Trustees page). Whoever holds it can link their own email as a
+-- trustee login, once, within 7 days. Codes are only created by trustees or the project owner and never listed
+-- to the public; used invites stay as a record of who joined and from which code.
+create table if not exists public.trustee_invites (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique,
+  label text not null,
+  created_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  used_by uuid references auth.users (id) on delete set null,
+  used_email text
+);
+
 -- ---------- applications from the public website -----------------------------------------------------
 create table if not exists public.applications (
   id uuid primary key default gen_random_uuid(),
@@ -178,6 +194,26 @@ create index if not exists payments_student_idx on public.payments (student_id);
 create index if not exists documents_student_idx on public.documents (student_id);
 create index if not exists notes_student_idx on public.notes (student_id);
 
+-- ---------- emails sent by the Apps Script mailer (Nov 2026) --------------------------------------------
+-- The mailer proves itself with a long random key; only its hash is kept. Make one with set_mailer_key().
+create table if not exists public.mailer_key (
+  id int primary key default 1 check (id = 1),
+  key_hash text not null,
+  created_at timestamptz not null default now()
+);
+-- One row per payment reminder sent, so each reminder goes out once.
+create table if not exists public.reminders_sent (
+  instalment_id uuid not null references public.instalments (id) on delete cascade,
+  kind text not null check (kind in ('week', 'day', 'overdue')),
+  sent_at timestamptz not null default now(),
+  primary key (instalment_id, kind)
+);
+-- A new trustee login stays "not announced" until the other trustees have been emailed about it.
+alter table public.profiles add column if not exists announced boolean not null default true;
+-- Only the owner makes trustee codes. A code made in the SQL editor makes an owner; codes made in the portal don't.
+alter table public.trustee_invites add column if not exists can_invite boolean not null default false;
+alter table public.profiles add column if not exists can_invite boolean not null default false;
+
 -- ---------- proof for each payment step (Nov 2026) -----------------------------------------------------
 -- A document can belong to one step of the payment schedule (an instalment) and/or one logged payment,
 -- so the invoice, the cheque from the trust and the institution's receipt sit together with that payment.
@@ -244,7 +280,7 @@ begin
   return out;
 end $$;
 
-create or replace function public.touch_updated_at() returns trigger language plpgsql as $$
+create or replace function public.touch_updated_at() returns trigger language plpgsql set search_path = public as $$
 begin new.updated_at := now(); return new; end $$;
 
 drop trigger if exists students_touch on public.students;
@@ -272,9 +308,24 @@ create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
   v_code text := upper(replace(trim(coalesce(new.raw_user_meta_data ->> 'access_code', '')), '-', ''));
+  v_owner boolean;
   v_student public.students%rowtype;
 begin
-  -- Trustee: the email must be on the list AND the matching one-time trustee code must be given.
+  -- Trustee invite: a valid, unused code from the Trustees page makes this login a trustee, whatever its email.
+  if v_code <> '' then
+    update public.trustee_invites set used_at = now(), used_by = new.id, used_email = lower(new.email)
+      where code = v_code and used_at is null and expires_at > now()
+      returning can_invite into v_owner;
+    if found then
+      update public.admin_emails set claimed = true, invite_code = null, invite_expires = null
+        where lower(email) = lower(new.email);
+      insert into public.profiles (id, role, email, full_name, announced, can_invite)
+        values (new.id, 'admin', new.email, nullif(trim(new.raw_user_meta_data ->> 'full_name'), ''), false, v_owner);
+      return new;
+    end if;
+  end if;
+
+  -- Trustee (older route): the email must be on the list AND the matching one-time trustee code must be given.
   if exists (select 1 from public.admin_emails where lower(email) = lower(new.email)) then
     if v_code <> '' and exists (select 1 from public.admin_emails
                                 where lower(email) = lower(new.email) and not claimed
@@ -282,8 +333,8 @@ begin
                                 for update) then
       update public.admin_emails set claimed = true, invite_code = null, invite_expires = null
         where lower(email) = lower(new.email);
-      insert into public.profiles (id, role, email, full_name)
-        values (new.id, 'admin', new.email, nullif(new.raw_user_meta_data ->> 'full_name', ''));
+      insert into public.profiles (id, role, email, full_name, announced)
+        values (new.id, 'admin', new.email, nullif(new.raw_user_meta_data ->> 'full_name', ''), false);
       return new;
     end if;
     raise exception 'JVJ_SIGNUP_NOT_ALLOWED';
@@ -346,6 +397,38 @@ begin
                                     invite_expires = excluded.invite_expires;
   return v;
 end $$;
+
+-- One-time trustee invite (valid 7 days), not tied to an email: the person who receives it links their own.
+-- Created from the portal's Trustees page, or by the project owner in the SQL editor:
+--   select public.issue_trustee_invite('For Imran');
+create or replace function public.issue_trustee_invite(p_label text) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v text;
+  l text := left(trim(coalesce(p_label, '')), 100);
+  v_editor boolean := coalesce(current_setting('request.jwt.claims', true), '') = '';
+begin
+  if not (v_editor or exists (select 1 from public.profiles where id = auth.uid() and role = 'admin' and can_invite)) then
+    raise exception 'only the portal owner can make trustee codes';
+  end if;
+  if l = '' then raise exception 'say who the invite is for'; end if;
+  loop
+    v := public.random_code(10);
+    exit when not exists (select 1 from public.trustee_invites where code = v)
+          and not exists (select 1 from public.admin_emails where invite_code = v);
+  end loop;
+  insert into public.trustee_invites (code, label, created_by, expires_at, can_invite)
+    values (v, l, auth.uid(), now() + interval '48 hours', v_editor);
+  return v;
+end $$;
+
+-- Lets the "I have a trustee code" screen say whether a code works before asking for an email and password.
+-- Answers only yes/no; codes are 10 characters from 32, far too many to guess.
+create or replace function public.trustee_code_ok(p_code text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.trustee_invites
+                 where code = upper(replace(trim(coalesce(p_code, '')), '-', '')) and used_at is null and expires_at > now());
+$$;
 
 -- =====================================================================================================
 -- Public application submission. The website calls this; the public can never read applications back.
@@ -468,6 +551,79 @@ begin
 end $$;
 
 -- Trustee turns an application into a student file: profile, course, payment plan and documents.
+-- The mailer's key. Run `select public.set_mailer_key();` in the SQL editor and paste the result into the Apps Script
+-- settings (MAILER_KEY). Running it again replaces the key, and the old one stops working.
+create or replace function public.set_mailer_key() returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v text := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+begin
+  if coalesce(current_setting('request.jwt.claims', true), '') <> '' then raise exception 'not allowed'; end if;
+  insert into public.mailer_key (id, key_hash) values (1, encode(sha256(convert_to(v, 'UTF8')), 'hex'))
+    on conflict (id) do update set key_hash = excluded.key_hash, created_at = now();
+  return v;
+end $$;
+
+-- The mailer calls this every hour with its key, and is handed each of these once:
+--   reminders: payments due within a week, due today or tomorrow, or 3 to 30 days overdue,
+--              for active students on an ongoing course who have an email address;
+--   new_trustees: trustees who joined since the last call, and trustee_emails: the other trustees to tell.
+-- Without the right key it gets nothing.
+create or replace function public.mailer_digest(p_key text, p_max int default 40) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  today date := (now() at time zone 'Asia/Colombo')::date;
+  v_rem jsonb;
+  v_new jsonb;
+  v_ids uuid[];
+  v_to jsonb;
+begin
+  if coalesce(p_key, '') !~ '^[0-9a-f]{64}$' or not exists (
+       select 1 from public.mailer_key where key_hash = encode(sha256(convert_to(p_key, 'UTF8')), 'hex')) then
+    return null;
+  end if;
+
+  with due as (
+    select i.id, i.label, i.due_date, i.amount_lkr, i.funded_by, s.code, s.email,
+           coalesce(nullif(trim(s.preferred_name), ''), s.full_name) as name, c.title as course, c.institution,
+           case when i.due_date between today and today + 1 then 'day'
+                when i.due_date between today + 2 and today + 7 then 'week'
+                when i.due_date between today - 30 and today - 3 then 'overdue' end as kind
+    from public.instalments i
+    join public.students s on s.id = i.student_id
+    join public.courses c on c.id = i.course_id
+    where i.status = 'due' and i.due_date between today - 30 and today + 7
+      and s.status = 'active' and c.status = 'ongoing'
+      and coalesce(s.email, '') ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+  ), pick as (
+    select * from due d
+    where d.kind is not null
+      and not exists (select 1 from public.reminders_sent r where r.instalment_id = d.id and r.kind = d.kind)
+    order by d.due_date
+    limit greatest(0, least(coalesce(p_max, 40), 200))
+  ), mark as (
+    insert into public.reminders_sent (instalment_id, kind) select id, kind from pick
+    on conflict do nothing returning instalment_id
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('kind', p.kind, 'name', p.name, 'email', p.email, 'code', p.code,
+           'label', p.label, 'due_date', p.due_date, 'amount_lkr', p.amount_lkr, 'funded_by', p.funded_by,
+           'course', p.course, 'institution', p.institution) order by p.due_date), '[]'::jsonb)
+    into v_rem from pick p join mark m on m.instalment_id = p.id;
+
+  with n as (
+    update public.profiles set announced = true where role = 'admin' and not announced
+    returning id, full_name, email, created_at
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('name', full_name, 'email', email, 'joined', created_at)), '[]'::jsonb),
+         array_agg(id)
+    into v_new, v_ids from n;
+
+  select coalesce(jsonb_agg(distinct lower(p.email)), '[]'::jsonb) into v_to from public.profiles p
+    where p.role = 'admin' and coalesce(p.email, '') <> '' and not (p.id = any (coalesce(v_ids, '{}')));
+
+  return jsonb_build_object('reminders', v_rem, 'new_trustees', v_new, 'trustee_emails', v_to);
+end $$;
+
 create or replace function public.enrol_application(p_application uuid, p_trust uuid) returns uuid
 language plpgsql security definer set search_path = public as $$
 declare
@@ -504,7 +660,7 @@ begin
   returning id into v_student;
 
   insert into public.courses (student_id, trust_id, title, institution, awarding_body, start_date, duration_years,
-                              payment_plan, total_fee_lkr, total_fee_foreign, foreign_currency)
+                              payment_plan, total_fee_lkr, total_fee_foreign, foreign_currency, notes)
   values (v_student, p_trust,
           coalesce(nullif(ans ->> 'courseTitle', ''), 'Course'),
           nullif(ans ->> 'institution', ''),
@@ -514,7 +670,8 @@ begin
           nullif(ans ->> 'paymentFrequency', ''),
           coalesce(nullif(ans ->> 'totalFeeLkr', '')::numeric, 0),
           coalesce(nullif(ans ->> 'totalFeeForeign', '')::numeric, 0),
-          v_currency)
+          v_currency,
+          case when ans ->> 'institutionUndecided' = 'true' then 'They hadn’t chosen where to study when they applied.' end)
   returning id into v_course;
 
   for r in select * from jsonb_array_elements(coalesce(ans -> 'plan', '[]'::jsonb)) loop
@@ -624,6 +781,7 @@ end $$;
 
 alter table public.trusts enable row level security;
 alter table public.admin_emails enable row level security;
+alter table public.trustee_invites enable row level security;
 alter table public.applications enable row level security;
 alter table public.students enable row level security;
 alter table public.profiles enable row level security;
@@ -632,6 +790,8 @@ alter table public.instalments enable row level security;
 alter table public.payments enable row level security;
 alter table public.documents enable row level security;
 alter table public.notes enable row level security;
+alter table public.mailer_key enable row level security;   -- no policies: only the functions above read it
+alter table public.reminders_sent enable row level security;
 
 do $$
 declare t text;
@@ -645,6 +805,9 @@ end $$;
 drop policy if exists "signed-in read" on public.trusts;
 drop policy if exists "read own profile" on public.profiles;
 drop policy if exists "student uploads own" on public.documents;
+drop policy if exists "admin reads" on public.trustee_invites;
+drop policy if exists "admin cancels unused" on public.trustee_invites;
+drop policy if exists "admin reads" on public.reminders_sent;
 
 -- trustees: everything
 create policy "admin all" on public.trusts       for all to authenticated using (public.is_admin()) with check (public.is_admin());
@@ -656,6 +819,10 @@ create policy "admin all" on public.instalments  for all to authenticated using 
 create policy "admin all" on public.payments     for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin all" on public.documents    for all to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "admin all" on public.notes        for all to authenticated using (public.is_admin()) with check (public.is_admin());
+-- trustee invites: trustees see them and may cancel unused ones; codes are only made by issue_trustee_invite
+create policy "admin reads" on public.trustee_invites for select to authenticated using (public.is_admin());
+create policy "admin cancels unused" on public.trustee_invites for delete to authenticated using (public.is_admin() and used_at is null);
+create policy "admin reads" on public.reminders_sent for select to authenticated using (public.is_admin());
 
 -- everyone signed in: trust names and their own login record
 create policy "signed-in read" on public.trusts for select to authenticated using (true);
@@ -690,6 +857,11 @@ revoke execute on function public.forget_deleted_document() from public, anon, a
 revoke execute on function public.check_document_link() from public, anon, authenticated;
 revoke execute on function public.convert_to_rupees(jsonb) from public, anon;
 revoke execute on function public.random_code(int) from anon, authenticated, public;
+revoke execute on function public.issue_trustee_invite(text) from public, anon;
+grant execute on function public.issue_trustee_invite(text) to authenticated;
+grant execute on function public.trustee_code_ok(text) to anon, authenticated;
+revoke execute on function public.set_mailer_key() from public, anon, authenticated;
+grant execute on function public.mailer_digest(text, int) to anon, authenticated;
 grant execute on function public.submit_application(jsonb, jsonb, text) to anon, authenticated;
 grant execute on function public.claim_notification(text, text) to anon, authenticated;
 grant execute on function public.application_upload_ok(text) to anon, authenticated;
