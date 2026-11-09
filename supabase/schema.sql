@@ -31,7 +31,7 @@ alter table public.admin_emails add column if not exists invite_expires timestam
 
 -- ---------- trustee invites (the usual way to add a trustee) -------------------------------------------
 -- A trustee creates a one-time code in the portal (Trustees page). Whoever holds it can link their own email as a
--- trustee login, once, within 7 days. Codes are only created by trustees or the project owner and never listed
+-- trustee login, once, within 48 hours. Codes are only created by the portal owner and never listed
 -- to the public; used invites stay as a record of who joined and from which code.
 create table if not exists public.trustee_invites (
   id uuid primary key default gen_random_uuid(),
@@ -376,17 +376,19 @@ end $$;
 
 -- One-time trustee code (valid 7 days). Run from the Supabase SQL editor by the project owner:
 --   select public.issue_trustee_code('trustee@example.com');
--- or by an existing trustee. Give the code to the trustee privately; they enter it when creating their login.
+-- or by the portal owner when signed in. Give the code to the trustee privately; they enter it when creating their login.
 create or replace function public.issue_trustee_code(p_email text) returns text
 language plpgsql security definer set search_path = public as $$
 declare
   v text;
   e text := lower(trim(coalesce(p_email, '')));
 begin
-  -- Allowed for a signed-in trustee, or for the project owner in the SQL editor (no website request behind it:
-  -- every call from the website carries request.jwt.claims, set by Supabase itself).
-  if not (public.is_admin() or coalesce(current_setting('request.jwt.claims', true), '') = '') then
-    raise exception 'not allowed';
+  -- Allowed for the portal owner (can_invite), or for the project owner in the SQL editor (no website request behind
+  -- it: every call from the website carries request.jwt.claims, set by Supabase itself). Ordinary trustees can't,
+  -- the same rule as issue_trustee_invite, so this older route is not a way around "only the owner adds trustees".
+  if not (coalesce(current_setting('request.jwt.claims', true), '') = ''
+          or exists (select 1 from public.profiles where id = auth.uid() and role = 'admin' and can_invite)) then
+    raise exception 'only the portal owner can make trustee codes';
   end if;
   if e !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'invalid email'; end if;
   if exists (select 1 from auth.users where lower(email) = e) then raise exception 'this email already has a login'; end if;
@@ -398,7 +400,7 @@ begin
   return v;
 end $$;
 
--- One-time trustee invite (valid 7 days), not tied to an email: the person who receives it links their own.
+-- One-time trustee invite (valid 48 hours), not tied to an email: the person who receives it links their own.
 -- Created from the portal's Trustees page, or by the project owner in the SQL editor:
 --   select public.issue_trustee_invite('For Imran');
 create or replace function public.issue_trustee_invite(p_label text) returns text
