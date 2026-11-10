@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { finalName, safeFileName, shrinkImage, shrinkPhoto } from '../lib/files';
 import { getSupabase } from '../lib/supabase';
+import { authReturnUrl, isAuthCallbackHash } from '../lib/authLink';
 import type {
   Application, Course, DocCategory, DocLink, DocumentRec, Instalment, Note, Overview, Payment, Profile, Student, StudentBundle,
   Trust, TrusteesPage,
@@ -15,7 +16,8 @@ export interface PortalApi {
   getSession(): Promise<Session | null>;
   onAuthChange(cb: (event: string) => void): () => void;
   signIn(email: string, password: string): Promise<void>;
-  signUp(email: string, password: string, accessCode: string, fullName?: string): Promise<void>;
+  /** 'check-email' when Supabase wants the email confirmed before the first sign-in. */
+  signUp(email: string, password: string, accessCode: string, fullName?: string): Promise<'signed-in' | 'check-email'>;
   /** Whether a trustee invite code is valid and unused, before asking for an email and password. */
   checkTrusteeCode(code: string): Promise<boolean>;
   signOut(): Promise<void>;
@@ -57,6 +59,23 @@ export interface PortalApi {
   removeUnusedUploads(): Promise<number>;
 }
 
+/** The plain-English message for an email link that came back with an error (e.g. already used or expired). */
+export function authLinkError(hash = location.hash): string {
+  if (!isAuthCallbackHash(hash)) return '';
+  const p = new URLSearchParams(hash.replace(/^#(\/portal)?[&?]?/, ''));
+  const code = p.get('error_code') ?? '';
+  const desc = p.get('error_description') ?? '';
+  if (!code && !desc) return '';
+  if (code === 'otp_expired' || /expired|invalid/i.test(desc))
+    return 'That email link has already been used or has expired. Each link works once. If you were confirming your email, it’s probably done: just sign in. If you were resetting your password, ask for a new link.';
+  return friendlyError(new Error(desc || code));
+}
+
+/** Once Supabase has read an email link's tokens, tidy them out of the address bar. */
+export function clearAuthHash() {
+  if (isAuthCallbackHash()) history.replaceState(history.state, '', `${location.pathname}${location.search}#/portal`);
+}
+
 /** Turn database errors into sentences a trustee or student can act on. */
 export function friendlyError(e: unknown): string {
   const msg = (e as { message?: string })?.message ?? String(e);
@@ -65,8 +84,8 @@ export function friendlyError(e: unknown): string {
   if (/Invalid login credentials/i.test(msg)) return 'That email and password don’t match. Check them and try again.';
   if (/already registered|already been registered/i.test(msg)) return 'An account with this email already exists — sign in instead.';
   if (/Password should be at least/i.test(msg)) return 'Please choose a password of at least 8 characters.';
-  if (/Email not confirmed/i.test(msg)) return 'This account still needs its email confirmed. Ask the site administrator to turn off email confirmation in Supabase (see the setup guide).';
-  if (/rate limit/i.test(msg)) return 'Too many attempts — please wait a minute and try again.';
+  if (/Email not confirmed/i.test(msg)) return 'Your login is made but your email isn’t confirmed yet. Open the confirmation link we emailed you (check spam too), then sign in.';
+  if (/rate limit|For security purposes|only request this after/i.test(msg)) return 'Too many attempts — please wait a minute and try again.';
   if (/Failed to fetch|NetworkError|network/i.test(msg)) return 'Couldn’t reach the server. Check your internet connection and try again.';
   if (/JVJ_LINK_MISMATCH/i.test(msg)) return 'That document can only be attached to this student’s own payments.';
   if (/row-level security|permission denied|not allowed/i.test(msg)) return 'You don’t have permission to do that.';
@@ -144,14 +163,11 @@ export function createLiveApi(): PortalApi {
         const res = await c.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: { access_code: accessCode.trim(), ...(fullName?.trim() ? { full_name: fullName.trim() } : {}) } },
+          options: { emailRedirectTo: authReturnUrl(), data: { access_code: accessCode.trim(), ...(fullName?.trim() ? { full_name: fullName.trim() } : {}) } },
         });
         ensure(res);
-        if (!res.data.session) {
-          // Email confirmation is still switched on in Supabase; try signing straight in so the
-          // user sees the clear "needs confirming" message rather than nothing.
-          ensure(await c.auth.signInWithPassword({ email: email.trim(), password }));
-        }
+        // No session means email confirmation is switched on in Supabase: a link is on its way.
+        return res.data.session ? 'signed-in' : 'check-email';
       }),
 
     checkTrusteeCode: (code) =>
@@ -161,7 +177,7 @@ export function createLiveApi(): PortalApi {
 
     sendPasswordReset: (email) =>
       withSb(async (c) => {
-        const redirectTo = `${location.origin}${location.pathname}#/portal`;
+        const redirectTo = authReturnUrl();
         ensure(await c.auth.resetPasswordForEmail(email.trim(), { redirectTo }));
       }),
 

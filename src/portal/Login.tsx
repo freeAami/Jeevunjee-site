@@ -40,9 +40,16 @@ export function Login({ api, signedInWithoutProfile, startupError }: { api: Port
     setBusy(true);
     try {
       if (mode === 'signin') await api.signIn(email, password);
-      else if (mode === 'create') await api.signUp(email, password, code);
-      else if (mode === 'trustee') await api.signUp(email, password, code, name);
-      else {
+      else if (mode === 'create' || mode === 'trustee') {
+        const result = await api.signUp(email, password, code, mode === 'trustee' ? name : undefined);
+        if (result === 'check-email') {
+          setMode('signin');
+          setCodeOk(false);
+          setPassword('');
+          setConfirm('');
+          setInfo(`Your login is made. We’ve emailed a confirmation link to ${email.trim()}. Open it (check spam too), then sign in here.`);
+        }
+      } else {
         await api.sendPasswordReset(email);
         setInfo('If that email has an account, a link to choose a new password is on its way. Check spam too.');
       }

@@ -5,6 +5,7 @@ import { Nav } from './components/Nav';
 import { Privacy } from './components/Privacy';
 import { ApplyBand, Family, Footer, HowItWorks, Mission, WhoWeSupport } from './components/Sections';
 import { Journey } from './journey/Journey';
+import { isAuthCallbackHash } from './lib/authLink';
 
 // The trustee/student portal lives at #/portal and is only downloaded when someone goes there.
 const PortalApp = lazy(() => import('./portal/PortalApp'));
@@ -12,7 +13,9 @@ const PortalApp = lazy(() => import('./portal/PortalApp'));
 function useHashRoute() {
   const read = () =>
     location.hash.startsWith('#/portal') ? location.hash.slice('#/portal'.length) || '/'
-    : location.hash.startsWith('#/privacy') ? '#privacy' : null;
+    : location.hash.startsWith('#/privacy') ? '#privacy'
+    // Back from an email link (confirm or reset): the portal finishes signing in.
+    : isAuthCallbackHash() ? '/' : null;
   const [route, setRoute] = useState(read);
   useEffect(() => {
     const on = () => {

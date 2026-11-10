@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabaseConfigured } from '../lib/supabase';
-import { createLiveApi, friendlyError, type PortalApi, type Session } from './api';
+import { authLinkError, clearAuthHash, createLiveApi, friendlyError, type PortalApi, type Session } from './api';
 import { createDemoApi, resetDemo } from './demo';
 import { Applications, ApplicationView } from './admin/Applications';
 import { OverviewPage } from './admin/Overview';
@@ -18,6 +18,7 @@ export default function PortalApp({ route }: { route: string }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState('');
+  const [linkError] = useState(() => authLinkError());
   const [recovering, setRecovering] = useState(false);
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export default function PortalApp({ route }: { route: string }) {
     const load = async () => {
       try {
         const s = await api.getSession();
+        clearAuthHash();
         const p = s ? await api.getProfile() : null;
         if (!live) return;
         setSession(s);
@@ -77,7 +79,7 @@ export default function PortalApp({ route }: { route: string }) {
     return (
       <div className="portal">
         {banner}
-        <Login api={api} signedInWithoutProfile={!!session && !profile} startupError={error} />
+        <Login api={api} signedInWithoutProfile={!!session && !profile} startupError={error || linkError} />
       </div>
     );
   }
